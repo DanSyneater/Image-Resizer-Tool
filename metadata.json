@@ -1,6 +1,6 @@
 {
   "name": "Image Resizer Tool",
-  "description": "A web tool to upload, resize, crop, and save images to specific dimensions (250x375 and 262x147).",
+  "description": "A web tool to upload, crop, and export images for eMedia VOD and runnTV with strict size and title safety checks.",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }

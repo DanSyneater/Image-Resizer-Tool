@@ -1,1 +1,49 @@
 @import "tailwindcss";
+
+/* Title Safety Zone overlays for Cropper and Preview */
+.crop-area-safety-margin {
+  position: relative;
+}
+
+.crop-area-safety-margin::after {
+  content: '';
+  position: absolute;
+  top: var(--safety-margin-y, 20px);
+  left: var(--safety-margin-x, 20px);
+  right: var(--safety-margin-x, 20px);
+  bottom: var(--safety-margin-y, 20px);
+  border: 2px dashed rgba(239, 68, 68, 0.85); /* Bright red dashed border */
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 10;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.15); /* Dim the area outside the safety zone slightly */
+}
+
+/* For preview safety overlay */
+.preview-safety-overlay {
+  position: absolute;
+  top: var(--safety-margin-y, 20px);
+  left: var(--safety-margin-x, 20px);
+  right: var(--safety-margin-x, 20px);
+  bottom: var(--safety-margin-y, 20px);
+  border: 1.5px dashed rgba(239, 68, 68, 0.7);
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* Custom Scrollbar for better UI experience */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.2);
+}
