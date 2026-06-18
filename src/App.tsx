@@ -41,9 +41,9 @@ interface ImageSize {
   icon: any;
 }
 
-const EMEDIA_SIZES: ImageSize[] = [
+const EMEDIA_VOD_BOX_SIZES: ImageSize[] = [
   { 
-    id: 'emedia_poster', 
+    id: 'emedia_box_poster', 
     width: 250, 
     height: 375, 
     name: 'Poster', 
@@ -51,11 +51,11 @@ const EMEDIA_SIZES: ImageSize[] = [
     format: 'jpeg', 
     sizeLimitKb: 60, 
     hasTitleSafety: false,
-    description: 'Standard VOD Poster image',
+    description: 'Standard VOD Box Poster image',
     icon: ImageIcon 
   },
   { 
-    id: 'emedia_cover', 
+    id: 'emedia_box_cover', 
     width: 262, 
     height: 147, 
     name: 'Cover/Thumbnail', 
@@ -64,6 +64,81 @@ const EMEDIA_SIZES: ImageSize[] = [
     sizeLimitKb: 60, 
     hasTitleSafety: false,
     description: 'Landscape Cover/Thumbnail image',
+    icon: Tv 
+  },
+];
+
+const EMEDIA_VOD_SIZES: ImageSize[] = [
+  { 
+    id: 'emedia_vod_poster', 
+    width: 420, 
+    height: 560, 
+    name: 'Poster Image', 
+    suffix: '_PosterImage', 
+    format: 'jpeg', 
+    sizeLimitKb: 100, 
+    hasTitleSafety: false,
+    description: 'Standard VOD Poster Image',
+    icon: ImageIcon 
+  },
+  { 
+    id: 'emedia_vod_cover', 
+    width: 512, 
+    height: 288, 
+    name: 'Cover Image', 
+    suffix: '_CoverImage', 
+    format: 'jpeg', 
+    sizeLimitKb: 100, 
+    hasTitleSafety: false,
+    description: 'VOD Landscape Cover Image',
+    icon: Tv 
+  },
+  { 
+    id: 'emedia_vod_mobile_banner', 
+    width: 420, 
+    height: 560, 
+    name: 'Mobile Banner', 
+    suffix: '_MobileBanner', 
+    format: 'jpeg', 
+    sizeLimitKb: 100, 
+    hasTitleSafety: false,
+    description: 'VOD Mobile Banner Image',
+    icon: Smartphone 
+  },
+  { 
+    id: 'emedia_vod_web_banner', 
+    width: 1920, 
+    height: 1080, 
+    name: 'Web Banner', 
+    suffix: '_WebBanner', 
+    format: 'jpeg', 
+    sizeLimitKb: 300, 
+    hasTitleSafety: false,
+    description: 'VOD High-Res Web Banner Image',
+    icon: Globe 
+  },
+  { 
+    id: 'emedia_vod_poster_stb', 
+    width: 500, 
+    height: 750, 
+    name: 'Poster Image STB', 
+    suffix: '_PosterImage_STB', 
+    format: 'jpeg', 
+    sizeLimitKb: 150, 
+    hasTitleSafety: false,
+    description: 'VOD STB Poster Image',
+    icon: ImageIcon 
+  },
+  { 
+    id: 'emedia_vod_cover_stb', 
+    width: 524, 
+    height: 294, 
+    name: 'Cover Image STB', 
+    suffix: '_CoverImage_STB', 
+    format: 'jpeg', 
+    sizeLimitKb: 100, 
+    hasTitleSafety: false,
+    description: 'VOD STB Landscape Cover Image',
     icon: Tv 
   },
 ];
@@ -681,7 +756,7 @@ function ImagePanel({
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'emedia' | 'runntv'>('emedia');
+  const [activeTab, setActiveTab] = useState<'emedia_vod' | 'emedia_vod_box' | 'runntv'>('emedia_vod');
   const [globalSafetyShow, setGlobalSafetyShow] = useState<boolean>(true);
   const [showGuidelines, setShowGuidelines] = useState<boolean>(true);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
@@ -697,7 +772,11 @@ export default function App() {
 
   const masterFileInputRef = useRef<HTMLInputElement>(null);
 
-  const activeSizes = activeTab === 'emedia' ? EMEDIA_SIZES : RUNNTV_SIZES;
+  const activeSizes = activeTab === 'emedia_vod' 
+    ? EMEDIA_VOD_SIZES 
+    : activeTab === 'emedia_vod_box' 
+      ? EMEDIA_VOD_BOX_SIZES 
+      : RUNNTV_SIZES;
 
   // Handle master upload to apply to all cards in the current tab
   const handleMasterUpload = (file: File) => {
@@ -805,15 +884,26 @@ export default function App() {
               theme === 'dark' ? 'bg-zinc-900 border-zinc-800' : 'bg-zinc-200/60 border-zinc-300/80'
             }`}>
               <button
-                onClick={() => setActiveTab('emedia')}
+                onClick={() => setActiveTab('emedia_vod')}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition duration-200 cursor-pointer ${
-                  activeTab === 'emedia'
+                  activeTab === 'emedia_vod'
                     ? (theme === 'dark' ? 'bg-zinc-800 text-zinc-100 shadow-md border border-zinc-700/60' : 'bg-white text-zinc-950 shadow-sm border border-zinc-200')
                     : (theme === 'dark' ? 'text-zinc-400 hover:text-zinc-200' : 'text-zinc-600 hover:text-zinc-900')
                 }`}
               >
-                <ImageIcon className="w-3.5 h-3.5 text-amber-500" />
+                <ImageIcon className="w-3.5 h-3.5 text-indigo-400" />
                 eMedia VOD
+              </button>
+              <button
+                onClick={() => setActiveTab('emedia_vod_box')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition duration-200 cursor-pointer ${
+                  activeTab === 'emedia_vod_box'
+                    ? (theme === 'dark' ? 'bg-zinc-800 text-zinc-100 shadow-md border border-zinc-700/60' : 'bg-white text-zinc-950 shadow-sm border border-zinc-200')
+                    : (theme === 'dark' ? 'text-zinc-400 hover:text-zinc-200' : 'text-zinc-600 hover:text-zinc-900')
+                }`}
+              >
+                <Tv className="w-3.5 h-3.5 text-amber-500" />
+                eMedia VOD Box
               </button>
               <button
                 onClick={() => setActiveTab('runntv')}
@@ -854,7 +944,7 @@ export default function App() {
                 <div className="flex items-center gap-2">
                   <Info className={`w-4 h-4 shrink-0 ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`} />
                   <h2 className={`text-sm font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}`}>
-                    {activeTab === 'emedia' ? 'eMedia VOD Guidelines' : 'runnTV Specifications'}
+                    {activeTab === 'emedia_vod' ? 'eMedia VOD Specs' : activeTab === 'emedia_vod_box' ? 'eMedia VOD Box Guidelines' : 'runnTV Specifications'}
                   </h2>
                 </div>
                 <button 
@@ -872,7 +962,18 @@ export default function App() {
                 <div className={`flex-grow flex flex-col justify-between text-xs gap-3.5 ${
                   theme === 'dark' ? 'text-zinc-400' : 'text-zinc-600'
                 }`}>
-                  {activeTab === 'emedia' ? (
+                  {activeTab === 'emedia_vod' ? (
+                    <ul className="space-y-2.5">
+                      <li className="flex items-start gap-2">
+                        <span className="text-emerald-500 font-bold shrink-0">✔</span>
+                        <span><strong>6 Aspect Ratios:</strong> Poster (420x560), Cover (512x288), Mobile Banner (420x560), Web Banner (1920x1080), STB Poster (500x750), STB Cover (524x294).</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-emerald-500 font-bold shrink-0">✔</span>
+                        <span><strong>Format:</strong> High compatibility JPEG format by default.</span>
+                      </li>
+                    </ul>
+                  ) : activeTab === 'emedia_vod_box' ? (
                     <ul className="space-y-2.5">
                       <li className="flex items-start gap-2">
                         <span className="text-emerald-500 font-bold shrink-0">✔</span>
@@ -880,7 +981,7 @@ export default function App() {
                       </li>
                       <li className="flex items-start gap-2">
                         <span className="text-emerald-500 font-bold shrink-0">✔</span>
-                        <span><strong>Strict Size Limit:</strong> File sizes must not exceed <strong>60 KB</strong>. Use Jpeg compression options to tune size.</span>
+                        <span><strong>Strict Size Limit:</strong> File sizes must not exceed <strong>60 KB</strong>. Use JPEG compression options to tune size.</span>
                       </li>
                       <li className="flex items-start gap-2">
                         <span className="text-emerald-500 font-bold shrink-0">✔</span>
@@ -1043,7 +1144,7 @@ export default function App() {
 
         {/* Dynamic Image Panel Grid */}
         <div className={`grid gap-8 ${
-          activeTab === 'emedia' 
+          activeTab === 'emedia_vod_box' 
             ? 'grid-cols-1 lg:grid-cols-2' 
             : 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3'
         }`}>
