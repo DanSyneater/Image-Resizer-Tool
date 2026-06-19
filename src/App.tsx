@@ -57,27 +57,77 @@ export interface TextOverlayConfig {
   shadowBlur: number;
   shadowOffsetX: number;
   shadowOffsetY: number;
+  tracking: number; // Letter spacing in pixels
 }
 
 export const TYPOGRAPHY_PRESETS: Record<string, Omit<TextOverlayConfig, 'text'>> = {
   blockbuster: {
-    fontFamily: 'Bebas Neue',
-    fontSizePercent: 14,
+    fontFamily: 'Staatliches',
+    fontSizePercent: 13,
     color: '#ffffff',
     useGradient: true,
     gradientStartColor: '#ffffff',
-    gradientEndColor: '#b3b3b3',
-    style: 'bold',
+    gradientEndColor: '#cccccc',
+    style: 'normal',
     positionYPercent: 82,
     shadowEnabled: true,
     shadowColor: 'rgba(0, 0, 0, 0.9)',
-    shadowBlur: 12,
+    shadowBlur: 10,
     shadowOffsetX: 2,
-    shadowOffsetY: 5,
+    shadowOffsetY: 4,
+    tracking: 8,
   },
-  luxury: {
-    fontFamily: 'Cinzel',
+  editorial: {
+    fontFamily: 'Cormorant Garamond',
     fontSizePercent: 11,
+    color: '#ffffff',
+    useGradient: true,
+    gradientStartColor: '#ffffff',
+    gradientEndColor: '#eaeaea',
+    style: 'bold italic',
+    positionYPercent: 82,
+    shadowEnabled: true,
+    shadowColor: 'rgba(0, 0, 0, 0.8)',
+    shadowBlur: 8,
+    shadowOffsetX: 1,
+    shadowOffsetY: 3,
+    tracking: 10,
+  },
+  thriller: {
+    fontFamily: 'Julius Sans One',
+    fontSizePercent: 10,
+    color: '#ffffff',
+    useGradient: false,
+    gradientStartColor: '#ffffff',
+    gradientEndColor: '#ffffff',
+    style: 'normal',
+    positionYPercent: 80,
+    shadowEnabled: true,
+    shadowColor: 'rgba(0, 0, 0, 0.85)',
+    shadowBlur: 10,
+    shadowOffsetX: 1.5,
+    shadowOffsetY: 3,
+    tracking: 14,
+  },
+  action: {
+    fontFamily: 'Anton',
+    fontSizePercent: 15,
+    color: '#e50914',
+    useGradient: true,
+    gradientStartColor: '#ffffff',
+    gradientEndColor: '#e50914',
+    style: 'normal',
+    positionYPercent: 78,
+    shadowEnabled: true,
+    shadowColor: 'rgba(0, 0, 0, 0.95)',
+    shadowBlur: 12,
+    shadowOffsetX: 3,
+    shadowOffsetY: 4,
+    tracking: 1,
+  },
+  fantasy: {
+    fontFamily: 'Cinzel',
+    fontSizePercent: 12,
     color: '#ffffff',
     useGradient: true,
     gradientStartColor: '#ffffff',
@@ -85,55 +135,11 @@ export const TYPOGRAPHY_PRESETS: Record<string, Omit<TextOverlayConfig, 'text'>>
     style: 'bold',
     positionYPercent: 83,
     shadowEnabled: true,
-    shadowColor: 'rgba(0, 0, 0, 0.8)',
+    shadowColor: 'rgba(0, 0, 0, 0.85)',
     shadowBlur: 10,
     shadowOffsetX: 1,
     shadowOffsetY: 3,
-  },
-  modern: {
-    fontFamily: 'Outfit',
-    fontSizePercent: 10,
-    color: '#ffffff',
-    useGradient: false,
-    gradientStartColor: '#ffffff',
-    gradientEndColor: '#ffffff',
-    style: 'bold',
-    positionYPercent: 80,
-    shadowEnabled: true,
-    shadowColor: 'rgba(0, 0, 0, 0.65)',
-    shadowBlur: 8,
-    shadowOffsetX: 1,
-    shadowOffsetY: 2.5,
-  },
-  dramatic: {
-    fontFamily: 'Playfair Display',
-    fontSizePercent: 12,
-    color: '#ffffff',
-    useGradient: false,
-    gradientStartColor: '#ffffff',
-    gradientEndColor: '#ffffff',
-    style: 'bold italic',
-    positionYPercent: 80,
-    shadowEnabled: true,
-    shadowColor: 'rgba(0, 0, 0, 0.8)',
-    shadowBlur: 10,
-    shadowOffsetX: 2,
-    shadowOffsetY: 3.5,
-  },
-  calligraphy: {
-    fontFamily: 'Great Vibes',
-    fontSizePercent: 16,
-    color: '#ffffff',
-    useGradient: false,
-    gradientStartColor: '#ffffff',
-    gradientEndColor: '#ffffff',
-    style: 'normal',
-    positionYPercent: 84,
-    shadowEnabled: true,
-    shadowColor: 'rgba(0, 0, 0, 0.55)',
-    shadowBlur: 6,
-    shadowOffsetX: 1,
-    shadowOffsetY: 2,
+    tracking: 8,
   }
 };
 
@@ -246,7 +252,7 @@ const RUNNTV_SIZES: ImageSize[] = [
     height: 720, 
     name: 'Cover Art - TV', 
     suffix: '_Coverart_TV_1280x720', 
-    format: 'jpeg', 
+    format: 'png', 
     sizeLimitKb: 1024, 
     hasTitleSafety: true,
     description: 'Horizontal TV Cover Art. Title only, no cast/views/awards.',
@@ -258,7 +264,7 @@ const RUNNTV_SIZES: ImageSize[] = [
     height: 360, 
     name: 'Cover Art - Mobile', 
     suffix: '_Coverart_Mobile_640x360', 
-    format: 'jpeg', 
+    format: 'png', 
     sizeLimitKb: 1024, 
     hasTitleSafety: true,
     description: 'Horizontal Mobile Cover Art. Title only, no cast/views/awards.',
@@ -270,7 +276,7 @@ const RUNNTV_SIZES: ImageSize[] = [
     height: 540, 
     name: 'Cover Art - Web', 
     suffix: '_Coverart_Web_950x540', 
-    format: 'jpeg', 
+    format: 'png', 
     sizeLimitKb: 1024, 
     hasTitleSafety: true,
     description: 'Horizontal Web Cover Art. Title only, no cast/views/awards.',
@@ -282,7 +288,7 @@ const RUNNTV_SIZES: ImageSize[] = [
     height: 1440, 
     name: 'Hero Art', 
     suffix: '_Heroart_1080x1440', 
-    format: 'jpeg', 
+    format: 'png', 
     sizeLimitKb: 1024, 
     hasTitleSafety: true,
     description: 'Vertical Hero Art. Title only, no cast/views/awards.',
@@ -294,7 +300,7 @@ const RUNNTV_SIZES: ImageSize[] = [
     height: 1080, 
     name: 'Channel Logo', 
     suffix: '_ChannelLogo_1080x1080', 
-    format: 'jpeg', 
+    format: 'png', 
     sizeLimitKb: 1024, 
     hasTitleSafety: false,
     description: 'High-res square Channel Logo (1080x1080 png).',
@@ -399,7 +405,29 @@ const getCroppedImg = async (
       const x = targetSize.width / 2;
       lines.forEach((line, index) => {
         const lineY = startY + index * lineHeight;
-        ctx.fillText(line, x, lineY);
+        const trackingVal = textConfig.tracking || 0;
+
+        if (trackingVal === 0) {
+          ctx.fillText(line, x, lineY);
+        } else {
+          const charWidths = [];
+          let totalWidth = 0;
+          for (let i = 0; i < line.length; i++) {
+            const w = ctx.measureText(line[i]).width;
+            charWidths.push(w);
+            totalWidth += w;
+          }
+          totalWidth += trackingVal * (line.length - 1);
+
+          let currentX = x - totalWidth / 2;
+          const prevAlign = ctx.textAlign;
+          ctx.textAlign = 'left';
+          for (let i = 0; i < line.length; i++) {
+            ctx.fillText(line[i], currentX, lineY);
+            currentX += charWidths[i] + trackingVal;
+          }
+          ctx.textAlign = prevAlign;
+        }
       });
 
       ctx.restore();
@@ -959,22 +987,24 @@ export default function App() {
   // Text Overlay settings
   const [textConfig, setTextConfig] = useState<TextOverlayConfig>({
     text: '',
-    fontFamily: 'Bebas Neue',
+    fontFamily: 'Staatliches',
     fontSizePercent: 12,
     color: '#ffffff',
     useGradient: false,
     gradientStartColor: '#ffffff',
     gradientEndColor: '#cccccc',
-    style: 'bold',
+    style: 'normal',
     positionYPercent: 82,
     shadowEnabled: true,
     shadowColor: 'rgba(0, 0, 0, 0.85)',
     shadowBlur: 10,
     shadowOffsetX: 2,
     shadowOffsetY: 4,
+    tracking: 8,
   });
 
   const [showTextOverlays, setShowTextOverlays] = useState<Record<string, boolean>>({});
+  const [isTitlePanelCollapsed, setIsTitlePanelCollapsed] = useState<boolean>(true);
 
   const masterFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -1373,139 +1403,204 @@ export default function App() {
         </div>
 
         {/* Title Overlay Customizer */}
-        <div className={`border rounded-2xl p-6 shadow-lg mb-8 transition ${
+        <div className={`border rounded-2xl shadow-lg mb-8 transition-all duration-300 ${
+          isTitlePanelCollapsed ? 'p-4' : 'p-6'
+        } ${
           theme === 'dark' ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200/90 shadow-zinc-200/30'
         }`}>
-          <div className="flex items-center justify-between mb-4 border-b pb-3 border-zinc-200 dark:border-zinc-800">
+          <div 
+            onClick={() => setIsTitlePanelCollapsed(!isTitlePanelCollapsed)}
+            className={`flex items-center justify-between cursor-pointer select-none ${
+              isTitlePanelCollapsed ? '' : 'mb-4 border-b pb-3 border-zinc-200 dark:border-zinc-800'
+            }`}
+          >
             <div className="flex items-center gap-2.5">
               <Sparkles className="w-4 h-4 text-indigo-500 shrink-0" />
               <div>
-                <h2 className={`text-sm font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-200' : 'text-zinc-850'}`}>
-                  Creative Title Overlay
-                </h2>
+                <div className="flex items-center gap-2">
+                  <h2 className={`text-sm font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-200' : 'text-zinc-850'}`}>
+                    Creative Title Overlay
+                  </h2>
+                  <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase ${
+                    isTitlePanelCollapsed
+                      ? (theme === 'dark' ? 'bg-zinc-850 text-zinc-400' : 'bg-zinc-100 text-zinc-500')
+                      : 'bg-indigo-500/10 text-indigo-500'
+                  }`}>
+                    {isTitlePanelCollapsed ? 'Minimized' : 'Active'}
+                  </span>
+                </div>
                 <p className={`text-[10px] ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-450'}`}>
-                  Design high-quality creative text overlays that are printed directly onto the resized canvases.
+                  Design high-quality creative movie & series-style text overlays printed directly onto resized canvases.
                 </p>
               </div>
             </div>
             
-            {textConfig.text.trim() && (
-              <button
-                onClick={() => setTextConfig(prev => ({ ...prev, text: '' }))}
-                className="text-[10px] font-bold text-rose-500 bg-rose-500/10 hover:bg-rose-500/20 px-2.5 py-1 rounded-lg border border-rose-500/25 transition cursor-pointer"
+            <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
+              {textConfig.text.trim() && (
+                <button
+                  onClick={() => setTextConfig(prev => ({ ...prev, text: '' }))}
+                  className="text-[10px] font-bold text-rose-500 bg-rose-500/10 hover:bg-rose-500/20 px-2.5 py-1 rounded-lg border border-rose-500/25 transition cursor-pointer"
+                >
+                  Clear Title
+                </button>
+              )}
+              <button 
+                onClick={() => setIsTitlePanelCollapsed(!isTitlePanelCollapsed)}
+                className={`p-1.5 rounded-lg border transition hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer ${
+                  theme === 'dark' ? 'border-zinc-800 text-zinc-400' : 'border-zinc-200 text-zinc-500'
+                }`}
               >
-                Clear Title
+                {isTitlePanelCollapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
               </button>
-            )}
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Column 1: Input & Presets */}
-            <div className="lg:col-span-6 flex flex-col gap-4">
-              <div className="flex flex-col gap-1.5">
-                <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                  Title Typography Content (Supports Multi-line)
-                </span>
-                <textarea
-                  rows={2}
-                  value={textConfig.text}
-                  onChange={(e) => setTextConfig(prev => ({ ...prev, text: e.target.value }))}
-                  placeholder="Enter Title Text (e.g. DURBAN GEN)"
-                  className={`w-full px-3 py-2 text-xs font-semibold rounded-xl border focus:outline-none transition ${
-                    theme === 'dark' 
-                      ? 'bg-zinc-950 border-zinc-800 text-zinc-100 focus:border-indigo-500' 
-                      : 'bg-zinc-50 border-zinc-200 text-zinc-900 focus:border-indigo-650'
-                  }`}
-                />
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                  Creative Presets
-                </span>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    { key: 'blockbuster', label: '🎬 Blockbuster', desc: 'Bebas Neue' },
-                    { key: 'luxury', label: '🏆 Luxury Gold', desc: 'Cinzel Serif' },
-                    { key: 'modern', label: '⚡ Cyber Modern', desc: 'Outfit Geometric' },
-                    { key: 'dramatic', label: '🎭 Dramatic Italics', desc: 'Playfair Display' },
-                    { key: 'calligraphy', label: '✒️ Calligraphy Script', desc: 'Great Vibes' },
-                  ].map((preset) => (
-                    <button
-                      key={preset.key}
-                      onClick={() => applyPreset(preset.key)}
-                      className={`px-3 py-1.5 border text-xs rounded-xl font-semibold transition cursor-pointer text-left flex flex-col justify-center ${
-                        theme === 'dark' 
-                          ? 'bg-zinc-950 border-zinc-800 hover:border-zinc-650 text-zinc-300 hover:text-white' 
-                          : 'bg-zinc-50 border-zinc-200 hover:border-zinc-350 text-zinc-700 hover:text-zinc-950 shadow-sm'
-                      }`}
-                    >
-                      <span className="text-[11px] font-bold">{preset.label}</span>
-                      <span className="text-[8px] opacity-60 font-mono tracking-tighter">{preset.desc}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Column 2: Advanced Controls */}
-            <div className="lg:col-span-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Typography controls */}
-              <div className="flex flex-col gap-3.5">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex flex-col gap-1 w-full">
-                    <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                      Font Family
-                    </span>
-                    <select
-                      value={textConfig.fontFamily}
-                      onChange={(e) => setTextConfig(prev => ({ ...prev, fontFamily: e.target.value }))}
-                      className={`w-full border rounded-lg px-2 py-1 text-xs outline-none focus:border-indigo-500 ${
-                        theme === 'dark' ? 'bg-zinc-950 border-zinc-800 text-zinc-200' : 'bg-white border-zinc-300 text-zinc-800'
-                      }`}
-                    >
-                      <option value="Bebas Neue">Bebas Neue (Cinematic Display)</option>
-                      <option value="Anton">Anton (Solid Display)</option>
-                      <option value="Outfit">Outfit (Geometric Modern)</option>
-                      <option value="Montserrat">Montserrat (Classic Wide)</option>
-                      <option value="Playfair Display">Playfair Display (Editorial Serif)</option>
-                      <option value="Cinzel">Cinzel (Classic Roman Serif)</option>
-                      <option value="Merriweather">Merriweather (Sturdy Display Serif)</option>
-                      <option value="Great Vibes">Great Vibes (Calligraphy Script)</option>
-                    </select>
-                  </div>
+          {!isTitlePanelCollapsed && (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-2">
+              {/* Column 1: Input & Presets */}
+              <div className="lg:col-span-6 flex flex-col gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                    Title Typography Content (Supports Multi-line)
+                  </span>
+                  <textarea
+                    rows={2}
+                    value={textConfig.text}
+                    onChange={(e) => setTextConfig(prev => ({ ...prev, text: e.target.value }))}
+                    placeholder="Enter Title Text (e.g. DURBAN GEN)"
+                    className={`w-full px-3 py-2 text-xs font-semibold rounded-xl border focus:outline-none transition ${
+                      theme === 'dark' 
+                        ? 'bg-zinc-950 border-zinc-800 text-zinc-100 focus:border-indigo-500' 
+                        : 'bg-zinc-50 border-zinc-200 text-zinc-900 focus:border-indigo-650'
+                    }`}
+                  />
                 </div>
 
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex flex-col gap-1 w-1/2">
-                    <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                      Font Style
-                    </span>
-                    <select
-                      value={textConfig.style}
-                      onChange={(e) => setTextConfig(prev => ({ ...prev, style: e.target.value as any }))}
-                      className={`w-full border rounded-lg px-2 py-1 text-xs outline-none focus:border-indigo-500 ${
-                        theme === 'dark' ? 'bg-zinc-950 border-zinc-800 text-zinc-200' : 'bg-white border-zinc-300 text-zinc-800'
-                      }`}
-                    >
-                      <option value="normal">Normal</option>
-                      <option value="bold">Bold</option>
-                      <option value="italic">Italic</option>
-                      <option value="bold italic">Bold Italic</option>
-                    </select>
+                <div className="flex flex-col gap-2">
+                  <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                    Creative Poster Presets
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { key: 'blockbuster', label: '🎬 Blockbuster', desc: 'Staatliches Tall' },
+                      { key: 'editorial', label: '🎭 Classic Drama', desc: 'Cormorant Serif' },
+                      { key: 'thriller', label: '👁️ Sci-Fi Thriller', desc: 'Julius Wide' },
+                      { key: 'action', label: '💥 Action Red', desc: 'Anton Bold' },
+                      { key: 'fantasy', label: '🏆 Fantasy Gold', desc: 'Cinzel Classic' },
+                    ].map((preset) => (
+                      <button
+                        key={preset.key}
+                        onClick={() => applyPreset(preset.key)}
+                        className={`px-3 py-1.5 border text-xs rounded-xl font-semibold transition cursor-pointer text-left flex flex-col justify-center ${
+                          theme === 'dark' 
+                            ? 'bg-zinc-950 border-zinc-800 hover:border-zinc-650 text-zinc-300 hover:text-white' 
+                            : 'bg-zinc-50 border-zinc-200 hover:border-zinc-350 text-zinc-700 hover:text-zinc-950 shadow-sm'
+                        }`}
+                      >
+                        <span className="text-[11px] font-bold">{preset.label}</span>
+                        <span className="text-[8px] opacity-60 font-mono tracking-tighter">{preset.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Column 2: Advanced Controls */}
+              <div className="lg:col-span-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Typography controls */}
+                <div className="flex flex-col gap-3.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex flex-col gap-1 w-full">
+                      <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                        Font Family
+                      </span>
+                      <select
+                        value={textConfig.fontFamily}
+                        onChange={(e) => setTextConfig(prev => ({ ...prev, fontFamily: e.target.value }))}
+                        className={`w-full border rounded-lg px-2 py-1 text-xs outline-none focus:border-indigo-500 ${
+                          theme === 'dark' ? 'bg-zinc-950 border-zinc-800 text-zinc-200' : 'bg-white border-zinc-300 text-zinc-800'
+                        }`}
+                      >
+                        <option value="Staatliches">Staatliches (Retro Poster Tall)</option>
+                        <option value="Julius Sans One">Julius Sans One (Wide Thriller)</option>
+                        <option value="Cormorant Garamond">Cormorant Garamond (Elegant Book Serif)</option>
+                        <option value="Bebas Neue">Bebas Neue (Cinematic Display)</option>
+                        <option value="Anton">Anton (Solid Display)</option>
+                        <option value="Outfit">Outfit (Geometric Modern)</option>
+                        <option value="Montserrat">Montserrat (Classic Wide)</option>
+                        <option value="Playfair Display">Playfair Display (Editorial Serif)</option>
+                        <option value="Cinzel">Cinzel (Classic Roman Serif)</option>
+                        <option value="Merriweather">Merriweather (Sturdy Display Serif)</option>
+                        <option value="Great Vibes">Great Vibes (Calligraphy Script)</option>
+                      </select>
+                    </div>
                   </div>
 
-                  <div className="flex flex-col gap-1 w-1/2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex flex-col gap-1 w-1/2">
+                      <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                        Font Style
+                      </span>
+                      <select
+                        value={textConfig.style}
+                        onChange={(e) => setTextConfig(prev => ({ ...prev, style: e.target.value as any }))}
+                        className={`w-full border rounded-lg px-2 py-1 text-xs outline-none focus:border-indigo-500 ${
+                          theme === 'dark' ? 'bg-zinc-950 border-zinc-800 text-zinc-200' : 'bg-white border-zinc-300 text-zinc-800'
+                        }`}
+                      >
+                        <option value="normal">Normal</option>
+                        <option value="bold">Bold</option>
+                        <option value="italic">Italic</option>
+                        <option value="bold italic">Bold Italic</option>
+                      </select>
+                    </div>
+
+                    <div className="flex flex-col gap-1 w-1/2">
+                      <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                        Size ({textConfig.fontSizePercent}%)
+                      </span>
+                      <input
+                        type="range"
+                        min={4}
+                        max={24}
+                        step={0.5}
+                        value={textConfig.fontSizePercent}
+                        onChange={(e) => setTextConfig(prev => ({ ...prev, fontSizePercent: Number(e.target.value) }))}
+                        className={`w-full h-1 rounded-lg appearance-none cursor-pointer ${
+                          theme === 'dark' ? 'bg-zinc-700 accent-indigo-500' : 'bg-zinc-300 accent-indigo-650'
+                        }`}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1">
                     <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                      Size ({textConfig.fontSizePercent}%)
+                      Vertical Position ({textConfig.positionYPercent}%)
                     </span>
                     <input
                       type="range"
-                      min={4}
-                      max={24}
-                      step={0.5}
-                      value={textConfig.fontSizePercent}
-                      onChange={(e) => setTextConfig(prev => ({ ...prev, fontSizePercent: Number(e.target.value) }))}
+                      min={10}
+                      max={90}
+                      step={1}
+                      value={textConfig.positionYPercent}
+                      onChange={(e) => setTextConfig(prev => ({ ...prev, positionYPercent: Number(e.target.value) }))}
+                      className={`w-full h-1 rounded-lg appearance-none cursor-pointer ${
+                        theme === 'dark' ? 'bg-zinc-700 accent-indigo-500' : 'bg-zinc-300 accent-indigo-650'
+                      }`}
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                      Letter Tracking ({textConfig.tracking}px)
+                    </span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={25}
+                      step={1}
+                      value={textConfig.tracking}
+                      onChange={(e) => setTextConfig(prev => ({ ...prev, tracking: Number(e.target.value) }))}
                       className={`w-full h-1 rounded-lg appearance-none cursor-pointer ${
                         theme === 'dark' ? 'bg-zinc-700 accent-indigo-500' : 'bg-zinc-300 accent-indigo-650'
                       }`}
@@ -1513,134 +1608,117 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-1">
-                  <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                    Vertical Position ({textConfig.positionYPercent}%)
-                  </span>
-                  <input
-                    type="range"
-                    min={10}
-                    max={90}
-                    step={1}
-                    value={textConfig.positionYPercent}
-                    onChange={(e) => setTextConfig(prev => ({ ...prev, positionYPercent: Number(e.target.value) }))}
-                    className={`w-full h-1 rounded-lg appearance-none cursor-pointer ${
-                      theme === 'dark' ? 'bg-zinc-700 accent-indigo-500' : 'bg-zinc-300 accent-indigo-650'
-                    }`}
-                  />
-                </div>
-              </div>
+                {/* Color & Shadow controls */}
+                <div className="flex flex-col gap-3.5 border-t sm:border-t-0 sm:border-l pt-3.5 sm:pt-0 sm:pl-4 border-zinc-200 dark:border-zinc-800">
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                        Linear Gradient
+                      </span>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={textConfig.useGradient} 
+                          onChange={(e) => setTextConfig(prev => ({ ...prev, useGradient: e.target.checked }))} 
+                          className="sr-only peer" 
+                        />
+                        <div className={`w-7 h-4 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:height-3 after:width-3 after:transition-all peer-checked:bg-indigo-500 ${
+                          theme === 'dark' ? 'bg-zinc-700' : 'bg-zinc-300'
+                        }`}></div>
+                      </label>
+                    </div>
 
-              {/* Color & Shadow controls */}
-              <div className="flex flex-col gap-3.5 border-t sm:border-t-0 sm:border-l pt-3.5 sm:pt-0 sm:pl-4 border-zinc-200 dark:border-zinc-800">
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
-                    <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                      Linear Gradient
-                    </span>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        checked={textConfig.useGradient} 
-                        onChange={(e) => setTextConfig(prev => ({ ...prev, useGradient: e.target.checked }))} 
-                        className="sr-only peer" 
-                      />
-                      <div className={`w-7 h-4 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:height-3 after:width-3 after:transition-all peer-checked:bg-indigo-500 ${
-                        theme === 'dark' ? 'bg-zinc-700' : 'bg-zinc-300'
-                      }`}></div>
-                    </label>
+                    <div className="flex items-center gap-3">
+                      {textConfig.useGradient ? (
+                        <>
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="color"
+                              value={textConfig.gradientStartColor}
+                              onChange={(e) => setTextConfig(prev => ({ ...prev, gradientStartColor: e.target.value }))}
+                              className="w-6 h-6 border-0 rounded cursor-pointer bg-transparent"
+                            />
+                            <span className="text-[9px] font-mono opacity-80">{textConfig.gradientStartColor}</span>
+                          </div>
+                          <span className="text-xs opacity-50">➔</span>
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="color"
+                              value={textConfig.gradientEndColor}
+                              onChange={(e) => setTextConfig(prev => ({ ...prev, gradientEndColor: e.target.value }))}
+                              className="w-6 h-6 border-0 rounded cursor-pointer bg-transparent"
+                            />
+                            <span className="text-[9px] font-mono opacity-80">{textConfig.gradientEndColor}</span>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="color"
+                            value={textConfig.color}
+                            onChange={(e) => setTextConfig(prev => ({ ...prev, color: e.target.value }))}
+                            className="w-6 h-6 border-0 rounded cursor-pointer bg-transparent"
+                          />
+                          <span className="text-[10px] font-mono font-bold">{textConfig.color}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-3">
-                    {textConfig.useGradient ? (
-                      <>
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="color"
-                            value={textConfig.gradientStartColor}
-                            onChange={(e) => setTextConfig(prev => ({ ...prev, gradientStartColor: e.target.value }))}
-                            className="w-6 h-6 border-0 rounded cursor-pointer bg-transparent"
-                          />
-                          <span className="text-[9px] font-mono opacity-80">{textConfig.gradientStartColor}</span>
-                        </div>
-                        <span className="text-xs opacity-50">➔</span>
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="color"
-                            value={textConfig.gradientEndColor}
-                            onChange={(e) => setTextConfig(prev => ({ ...prev, gradientEndColor: e.target.value }))}
-                            className="w-6 h-6 border-0 rounded cursor-pointer bg-transparent"
-                          />
-                          <span className="text-[9px] font-mono opacity-80">{textConfig.gradientEndColor}</span>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="flex items-center gap-1.5">
-                        <input
-                          type="color"
-                          value={textConfig.color}
-                          onChange={(e) => setTextConfig(prev => ({ ...prev, color: e.target.value }))}
-                          className="w-6 h-6 border-0 rounded cursor-pointer bg-transparent"
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                        Text Shadow / Outline
+                      </span>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={textConfig.shadowEnabled} 
+                          onChange={(e) => setTextConfig(prev => ({ ...prev, shadowEnabled: e.target.checked }))} 
+                          className="sr-only peer" 
                         />
-                        <span className="text-[10px] font-mono font-bold">{textConfig.color}</span>
+                        <div className={`w-7 h-4 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:height-3 after:width-3 after:transition-all peer-checked:bg-indigo-500 ${
+                          theme === 'dark' ? 'bg-zinc-700' : 'bg-zinc-300'
+                        }`}></div>
+                      </label>
+                    </div>
+
+                    {textConfig.shadowEnabled && (
+                      <div className="flex items-center gap-3">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[8px] uppercase tracking-wider opacity-60">Color</span>
+                          <select
+                            value={textConfig.shadowColor}
+                            onChange={(e) => setTextConfig(prev => ({ ...prev, shadowColor: e.target.value }))}
+                            className={`border rounded px-1.5 py-0.5 text-[10px] focus:border-indigo-500 ${
+                              theme === 'dark' ? 'bg-zinc-950 border-zinc-800 text-zinc-300' : 'bg-white border-zinc-300 text-zinc-700'
+                            }`}
+                          >
+                            <option value="rgba(0, 0, 0, 0.9)">Dense Black (90%)</option>
+                            <option value="rgba(0, 0, 0, 0.7)">Medium Black (70%)</option>
+                            <option value="rgba(0, 0, 0, 0.4)">Soft Black (40%)</option>
+                            <option value="rgba(255, 255, 255, 0.6)">Soft White (60%)</option>
+                          </select>
+                        </div>
+                        
+                        <div className="flex flex-col gap-0.5 w-16">
+                          <span className="text-[8px] uppercase tracking-wider opacity-60">Blur ({textConfig.shadowBlur}px)</span>
+                          <input
+                            type="range"
+                            min={0}
+                            max={20}
+                            value={textConfig.shadowBlur}
+                            onChange={(e) => setTextConfig(prev => ({ ...prev, shadowBlur: Number(e.target.value) }))}
+                            className="w-full"
+                          />
+                        </div>
                       </div>
                     )}
                   </div>
                 </div>
-
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
-                    <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                      Text Shadow / Outline
-                    </span>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        checked={textConfig.shadowEnabled} 
-                        onChange={(e) => setTextConfig(prev => ({ ...prev, shadowEnabled: e.target.checked }))} 
-                        className="sr-only peer" 
-                      />
-                      <div className={`w-7 h-4 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:height-3 after:width-3 after:transition-all peer-checked:bg-indigo-500 ${
-                        theme === 'dark' ? 'bg-zinc-700' : 'bg-zinc-300'
-                      }`}></div>
-                    </label>
-                  </div>
-
-                  {textConfig.shadowEnabled && (
-                    <div className="flex items-center gap-3">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-[8px] uppercase tracking-wider opacity-60">Color</span>
-                        <select
-                          value={textConfig.shadowColor}
-                          onChange={(e) => setTextConfig(prev => ({ ...prev, shadowColor: e.target.value }))}
-                          className={`border rounded px-1.5 py-0.5 text-[10px] focus:border-indigo-500 ${
-                            theme === 'dark' ? 'bg-zinc-950 border-zinc-800 text-zinc-300' : 'bg-white border-zinc-300 text-zinc-700'
-                          }`}
-                        >
-                          <option value="rgba(0, 0, 0, 0.9)">Dense Black (90%)</option>
-                          <option value="rgba(0, 0, 0, 0.7)">Medium Black (70%)</option>
-                          <option value="rgba(0, 0, 0, 0.4)">Soft Black (40%)</option>
-                          <option value="rgba(255, 255, 255, 0.6)">Soft White (60%)</option>
-                        </select>
-                      </div>
-                      
-                      <div className="flex flex-col gap-0.5 w-16">
-                        <span className="text-[8px] uppercase tracking-wider opacity-60">Blur ({textConfig.shadowBlur}px)</span>
-                        <input
-                          type="range"
-                          min={0}
-                          max={20}
-                          value={textConfig.shadowBlur}
-                          onChange={(e) => setTextConfig(prev => ({ ...prev, shadowBlur: Number(e.target.value) }))}
-                          className="w-full"
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Global Toolbar */}
