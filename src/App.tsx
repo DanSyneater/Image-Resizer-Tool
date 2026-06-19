@@ -60,6 +60,17 @@ export interface TextOverlayConfig {
   tracking: number; // Letter spacing in pixels
 }
 
+export interface LogoOverlayConfig {
+  imageSrc: string | null;           // Base64 string of the uploaded logo/badge file
+  fileName: string | null;
+  opacity: number;                   // Transparency multiplier (0.1 to 1.0)
+  scalePercent: number;              // Size scale relative to canvas width (5% to 50%)
+  position: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center' | 'custom';
+  customXPercent: number;            // Custom horizontal coordinate (0% to 100%)
+  customYPercent: number;            // Custom vertical coordinate (0% to 100%)
+  paddingPercent: number;            // Safety margin distance from edges (1% to 15%)
+}
+
 export const TYPOGRAPHY_PRESETS: Record<string, Omit<TextOverlayConfig, 'text'>> = {
   blockbuster: {
     fontFamily: 'Staatliches',
@@ -316,7 +327,9 @@ const getCroppedImg = async (
   targetSize: { width: number; height: number },
   format: 'jpeg' | 'png',
   textConfig?: TextOverlayConfig,
-  showTextOverlay: boolean = false
+  showTextOverlay: boolean = false,
+  logoConfig?: LogoOverlayConfig,
+  showLogoOverlay: boolean = false
 ): Promise<Blob | null> => {
   try {
     const img = new Image();
@@ -433,6 +446,65 @@ const getCroppedImg = async (
       ctx.restore();
     }
 
+    // Draw logo/badge overlay if active
+    if (showLogoOverlay && logoConfig?.imageSrc) {
+      const logoImg = new Image();
+      logoImg.src = logoConfig.imageSrc;
+      await new Promise((resolve) => {
+        logoImg.onload = resolve;
+        logoImg.onerror = resolve;
+      });
+
+      if (logoImg.complete && logoImg.naturalWidth > 0) {
+        ctx.save();
+        ctx.globalAlpha = logoConfig.opacity;
+
+        const logoAspect = logoImg.naturalWidth / logoImg.naturalHeight;
+        let targetW = (logoConfig.scalePercent / 100) * targetSize.width;
+        let targetH = targetW / logoAspect;
+
+        // Safety cap
+        if (targetH > targetSize.height * 0.6) {
+          targetH = targetSize.height * 0.6;
+          targetW = targetH * logoAspect;
+        }
+
+        const margin = (logoConfig.paddingPercent / 100) * targetSize.width;
+        let drawX = 0;
+        let drawY = 0;
+
+        switch (logoConfig.position) {
+          case 'top-left':
+            drawX = margin;
+            drawY = margin;
+            break;
+          case 'top-right':
+            drawX = targetSize.width - targetW - margin;
+            drawY = margin;
+            break;
+          case 'bottom-left':
+            drawX = margin;
+            drawY = targetSize.height - targetH - margin;
+            break;
+          case 'bottom-right':
+            drawX = targetSize.width - targetW - margin;
+            drawY = targetSize.height - targetH - margin;
+            break;
+          case 'center':
+            drawX = (targetSize.width - targetW) / 2;
+            drawY = (targetSize.height - targetH) / 2;
+            break;
+          case 'custom':
+            drawX = (logoConfig.customXPercent / 100) * (targetSize.width - targetW);
+            drawY = (logoConfig.customYPercent / 100) * (targetSize.height - targetH);
+            break;
+        }
+
+        ctx.drawImage(logoImg, drawX, drawY, targetW, targetH);
+        ctx.restore();
+      }
+    }
+
     const mimeType = format === 'png' ? 'image/png' : 'image/jpeg';
     return new Promise((resolve) => {
       canvas.toBlob(
@@ -469,6 +541,9 @@ interface ImagePanelProps {
   textConfig?: TextOverlayConfig;
   showTextOverlay: boolean;
   setShowTextOverlay: (val: boolean) => void;
+  logoConfig?: LogoOverlayConfig;
+  showLogoOverlay: boolean;
+  setShowLogoOverlay: (val: boolean) => void;
 }
 
 function ImagePanel({
@@ -493,6 +568,9 @@ function ImagePanel({
   textConfig,
   showTextOverlay,
   setShowTextOverlay,
+  logoConfig,
+  showLogoOverlay,
+  setShowLogoOverlay,
 }: ImagePanelProps) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [actualSizeKb, setActualSizeKb] = useState<number>(0);
@@ -504,7 +582,7 @@ function ImagePanel({
   useEffect(() => {
     let currentUrl: string | null = null;
     if (image && croppedAreaPixels) {
-      getCroppedImg(image, croppedAreaPixels, quality, size, exportFormat, textConfig, showTextOverlay).then((blob) => {
+      getCroppedImg(image, croppedAreaPixels, quality, size, exportFormat, textConfig, showTextOverlay, logoConfig, showLogoOverlay).then((blob) => {
         if (blob) {
           currentUrl = URL.createObjectURL(blob);
           setPreviewUrl(currentUrl);
@@ -518,7 +596,7 @@ function ImagePanel({
     return () => {
       if (currentUrl) URL.revokeObjectURL(currentUrl);
     };
-  }, [image, croppedAreaPixels, quality, size, exportFormat, textConfig, showTextOverlay]);
+  }, [image, croppedAreaPixels, quality, size, exportFormat, textConfig, showTextOverlay, logoConfig, showLogoOverlay]);
 
   const generateFileName = () => {
     const now = new Date();
@@ -530,7 +608,7 @@ function ImagePanel({
 
   const saveImage = async () => {
     if (image && croppedAreaPixels) {
-      const blob = await getCroppedImg(image, croppedAreaPixels, quality, size, exportFormat, textConfig, showTextOverlay);
+      const blob = await getCroppedImg(image, croppedAreaPixels, quality, size, exportFormat, textConfig, showTextOverlay, logoConfig, showLogoOverlay);
       if (blob) {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -567,7 +645,7 @@ function ImagePanel({
         return;
       }
 
-      const blob = await getCroppedImg(image, croppedAreaPixels, quality, size, exportFormat, textConfig, showTextOverlay);
+      const blob = await getCroppedImg(image, croppedAreaPixels, quality, size, exportFormat, textConfig, showTextOverlay, logoConfig, showLogoOverlay);
       if (blob) {
         if (handle) {
           const writable = await handle.createWritable();
@@ -708,19 +786,34 @@ function ImagePanel({
                     )}
                   </div>
                   
-                  {textConfig && textConfig.text.trim() && (
-                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                      <input 
-                        type="checkbox" 
-                        checked={showTextOverlay} 
-                        onChange={(e) => setShowTextOverlay(e.target.checked)} 
-                        className="rounded border-zinc-300 dark:border-zinc-700 text-indigo-650 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer" 
-                      />
-                      <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-550'}`}>
-                        Overlay Title
-                      </span>
-                    </label>
-                  )}
+                  <div className="flex items-center gap-3">
+                    {textConfig && textConfig.text.trim() && (
+                      <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                        <input 
+                          type="checkbox" 
+                          checked={showTextOverlay} 
+                          onChange={(e) => setShowTextOverlay(e.target.checked)} 
+                          className="rounded border-zinc-300 dark:border-zinc-700 text-indigo-650 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer" 
+                        />
+                        <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-550'}`}>
+                          Title
+                        </span>
+                      </label>
+                    )}
+                    {logoConfig && logoConfig.imageSrc && (
+                      <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                        <input 
+                          type="checkbox" 
+                          checked={showLogoOverlay} 
+                          onChange={(e) => setShowLogoOverlay(e.target.checked)} 
+                          className="rounded border-zinc-300 dark:border-zinc-700 text-indigo-650 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer" 
+                        />
+                        <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-550'}`}>
+                          Logo
+                        </span>
+                      </label>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1006,6 +1099,21 @@ export default function App() {
   const [showTextOverlays, setShowTextOverlays] = useState<Record<string, boolean>>({});
   const [isTitlePanelCollapsed, setIsTitlePanelCollapsed] = useState<boolean>(true);
 
+  // Logo / Badge overlay state
+  const [logoConfig, setLogoConfig] = useState<LogoOverlayConfig>({
+    imageSrc: null,
+    fileName: null,
+    opacity: 1.0,
+    scalePercent: 18,
+    position: 'top-right',
+    customXPercent: 80,
+    customYPercent: 20,
+    paddingPercent: 5,
+  });
+
+  const [showLogoOverlays, setShowLogoOverlays] = useState<Record<string, boolean>>({});
+  const [isLogoPanelCollapsed, setIsLogoPanelCollapsed] = useState<boolean>(true);
+
   const masterFileInputRef = useRef<HTMLInputElement>(null);
 
   const activeSizes = activeTab === 'emedia_vod' 
@@ -1091,9 +1199,10 @@ export default function App() {
       const qual = qualities[size.id] !== undefined ? qualities[size.id] : 0.8;
       const fmt = exportFormats[size.id] || size.format;
       const localShowOverlay = showTextOverlays[size.id] !== undefined ? showTextOverlays[size.id] : (size.id !== 'runntv_logo');
+      const localShowLogoOverlay = showLogoOverlays[size.id] !== undefined ? showLogoOverlays[size.id] : (size.id !== 'runntv_logo');
       
       if (img && cropArea) {
-        const blob = await getCroppedImg(img, cropArea, qual, size, fmt, textConfig, localShowOverlay);
+        const blob = await getCroppedImg(img, cropArea, qual, size, fmt, textConfig, localShowOverlay, logoConfig, localShowLogoOverlay);
         if (blob) {
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
@@ -1126,9 +1235,10 @@ export default function App() {
         const qual = qualities[size.id] !== undefined ? qualities[size.id] : 0.8;
         const fmt = exportFormats[size.id] || size.format;
         const localShowOverlay = showTextOverlays[size.id] !== undefined ? showTextOverlays[size.id] : (size.id !== 'runntv_logo');
+        const localShowLogoOverlay = showLogoOverlays[size.id] !== undefined ? showLogoOverlays[size.id] : (size.id !== 'runntv_logo');
         
         if (img && cropArea) {
-          const blob = await getCroppedImg(img, cropArea, qual, size, fmt, textConfig, localShowOverlay);
+          const blob = await getCroppedImg(img, cropArea, qual, size, fmt, textConfig, localShowOverlay, logoConfig, localShowLogoOverlay);
           if (blob) {
             const ext = fmt === 'png' ? 'png' : 'jpg';
             const baseName = filenamePrefix && filenamePrefix.trim() ? filenamePrefix.trim() : 'image';
@@ -1721,6 +1831,294 @@ export default function App() {
           )}
         </div>
 
+        {/* Logo & Badge Overlay Customizer */}
+        <div className={`border rounded-2xl shadow-lg mb-8 transition-all duration-300 ${
+          isLogoPanelCollapsed ? 'p-4' : 'p-6'
+        } ${
+          theme === 'dark' ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200/90 shadow-zinc-200/30'
+        }`}>
+          <div 
+            onClick={() => setIsLogoPanelCollapsed(!isLogoPanelCollapsed)}
+            className={`flex items-center justify-between cursor-pointer select-none ${
+              isLogoPanelCollapsed ? '' : 'mb-4 border-b pb-3 border-zinc-200 dark:border-zinc-800'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <ImageIcon className="w-4 h-4 text-violet-500 shrink-0" />
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className={`text-sm font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-200' : 'text-zinc-850'}`}>
+                    Logo & Badge Overlay
+                  </h2>
+                  <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase ${
+                    isLogoPanelCollapsed
+                      ? (theme === 'dark' ? 'bg-zinc-855 text-zinc-400' : 'bg-zinc-100 text-zinc-500')
+                      : 'bg-indigo-500/10 text-indigo-500'
+                  }`}>
+                    {isLogoPanelCollapsed ? 'Minimized' : 'Active'}
+                  </span>
+                </div>
+                <p className={`text-[10px] ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-450'}`}>
+                  Import transparent PNG brand logos, status tags, or promotional badges to print on your resized images.
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
+              {logoConfig.imageSrc && (
+                <button
+                  onClick={() => setLogoConfig(prev => ({ ...prev, imageSrc: null, fileName: null }))}
+                  className="text-[10px] font-bold text-rose-500 bg-rose-500/10 hover:bg-rose-500/20 px-2.5 py-1 rounded-lg border border-rose-500/25 transition cursor-pointer"
+                >
+                  Remove Asset
+                </button>
+              )}
+              <button 
+                onClick={() => setIsLogoPanelCollapsed(!isLogoPanelCollapsed)}
+                className={`p-1.5 rounded-lg border transition hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer ${
+                  theme === 'dark' ? 'border-zinc-800 text-zinc-400' : 'border-zinc-200 text-zinc-500'
+                }`}
+              >
+                {isLogoPanelCollapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          </div>
+
+          {!isLogoPanelCollapsed && (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-2">
+              {/* Column 1: Upload Dropzone */}
+              <div className="lg:col-span-5 flex flex-col gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                    Upload Watermark / Badge (PNG recommended)
+                  </span>
+                  
+                  {logoConfig.imageSrc ? (
+                    <div className={`flex items-center gap-3 p-3.5 border rounded-xl ${
+                      theme === 'dark' ? 'bg-zinc-950 border-zinc-800' : 'bg-zinc-50 border-zinc-200'
+                    }`}>
+                      <div className="w-12 h-12 rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-150 dark:bg-zinc-950 flex items-center justify-center overflow-hidden shrink-0">
+                        <img src={logoConfig.imageSrc} alt="Preview Logo" className="max-w-full max-h-full object-contain" />
+                      </div>
+                      <div className="flex-grow min-w-0">
+                        <p className="text-xs font-semibold truncate">{logoConfig.fileName || 'Uploaded Asset'}</p>
+                        <p className="text-[10px] opacity-60">Ready to overlay on active images.</p>
+                      </div>
+                      <label className="text-[10px] font-bold text-indigo-500 hover:text-indigo-400 bg-indigo-500/10 px-2.5 py-1 rounded cursor-pointer border border-indigo-500/20 shrink-0">
+                        Replace
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onload = (event) => {
+                                setLogoConfig(prev => ({
+                                  ...prev,
+                                  imageSrc: event.target?.result as string,
+                                  fileName: file.name
+                                }));
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                  ) : (
+                    <label className={`flex flex-col items-center justify-center gap-2 p-6 border-2 border-dashed rounded-xl cursor-pointer hover:border-indigo-500 transition ${
+                      theme === 'dark' ? 'bg-zinc-950 border-zinc-800 hover:bg-zinc-900/40' : 'bg-zinc-50 border-zinc-200 hover:bg-indigo-50/20'
+                    }`}>
+                      <Upload className="w-6 h-6 text-zinc-400" />
+                      <div className="text-center">
+                        <p className="text-xs font-bold">Click or drag brand logo/badge here</p>
+                        <p className="text-[9px] opacity-60 mt-0.5">Supports PNG, SVG, JPG (transparency preferred)</p>
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onload = (event) => {
+                              setLogoConfig(prev => ({
+                                ...prev,
+                                imageSrc: event.target?.result as string,
+                                fileName: file.name
+                              }));
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                    </label>
+                  )}
+                </div>
+
+                {logoConfig.imageSrc && (
+                  <div className="flex flex-col gap-2">
+                    <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                      Sample Quick Presets
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { label: '↖️ Top Left', config: { position: 'top-left', scalePercent: 15, opacity: 0.8, paddingPercent: 4 } },
+                        { label: '↗️ Top Right', config: { position: 'top-right', scalePercent: 15, opacity: 0.8, paddingPercent: 4 } },
+                        { label: '↙️ Bottom Left', config: { position: 'bottom-left', scalePercent: 20, opacity: 1.0, paddingPercent: 0 } },
+                        { label: '↘️ Bottom Right', config: { position: 'bottom-right', scalePercent: 20, opacity: 1.0, paddingPercent: 0 } },
+                        { label: '⏺️ Center', config: { position: 'center', scalePercent: 35, opacity: 0.9, paddingPercent: 5 } },
+                      ].map((preset, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => setLogoConfig(prev => ({ ...prev, ...preset.config } as any))}
+                          className={`px-2 py-1 text-[10px] border rounded-lg font-semibold transition cursor-pointer ${
+                            theme === 'dark'
+                              ? 'bg-zinc-950 border-zinc-800 hover:border-zinc-700 text-zinc-355 hover:text-white'
+                              : 'bg-zinc-50/60 border-zinc-200 hover:border-zinc-300 text-zinc-650 hover:text-zinc-950'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Column 2: Advanced Sizing & Placement sliders */}
+              <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-6 border-t lg:border-t-0 lg:border-l pt-6 lg:pt-0 lg:pl-6 border-zinc-200 dark:border-zinc-800">
+                <div className="flex flex-col gap-3.5">
+                  <div className="flex flex-col gap-1">
+                    <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                      Placement Position
+                    </span>
+                    <div className="grid grid-cols-3 gap-1.5 mt-1">
+                      {[
+                        { id: 'top-left', label: '↖️ Top Left' },
+                        { id: 'center', label: '⏺️ Center' },
+                        { id: 'top-right', label: '↗️ Top Right' },
+                        { id: 'bottom-left', label: '↙️ Bottom Left' },
+                        { id: 'custom', label: '⚙️ Custom' },
+                        { id: 'bottom-right', label: '↘️ Bottom Right' },
+                      ].map((pos) => (
+                        <button
+                          key={pos.id}
+                          onClick={() => setLogoConfig(prev => ({ ...prev, position: pos.id as any }))}
+                          className={`py-1.5 px-1 text-[10px] font-bold rounded-lg border text-center transition cursor-pointer ${
+                            logoConfig.position === pos.id
+                              ? 'bg-indigo-500 border-indigo-500 text-white'
+                              : (theme === 'dark'
+                                  ? 'bg-zinc-950 border-zinc-850 hover:border-zinc-700 text-zinc-350'
+                                  : 'bg-zinc-50 border-zinc-200 hover:border-zinc-300 text-zinc-700')
+                          }`}
+                        >
+                          {pos.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {logoConfig.position !== 'custom' && (
+                    <div className="flex flex-col gap-1">
+                      <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                        Border Margin ({logoConfig.paddingPercent}%)
+                      </span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={15}
+                        step={1}
+                        value={logoConfig.paddingPercent}
+                        onChange={(e) => setLogoConfig(prev => ({ ...prev, paddingPercent: Number(e.target.value) }))}
+                        className={`w-full h-1 rounded-lg appearance-none cursor-pointer ${
+                          theme === 'dark' ? 'bg-zinc-700 accent-indigo-500' : 'bg-zinc-300 accent-indigo-650'
+                        }`}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex flex-col gap-3.5">
+                  <div className="flex flex-col gap-1">
+                    <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                      Scale Size ({logoConfig.scalePercent}%)
+                    </span>
+                    <input
+                      type="range"
+                      min={5}
+                      max={50}
+                      step={1}
+                      value={logoConfig.scalePercent}
+                      onChange={(e) => setLogoConfig(prev => ({ ...prev, scalePercent: Number(e.target.value) }))}
+                      className={`w-full h-1 rounded-lg appearance-none cursor-pointer ${
+                        theme === 'dark' ? 'bg-zinc-700 accent-indigo-500' : 'bg-zinc-300 accent-indigo-650'
+                      }`}
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                      Opacity Transparency ({Math.round(logoConfig.opacity * 100)}%)
+                    </span>
+                    <input
+                      type="range"
+                      min={0.1}
+                      max={1.0}
+                      step={0.05}
+                      value={logoConfig.opacity}
+                      onChange={(e) => setLogoConfig(prev => ({ ...prev, opacity: Number(e.target.value) }))}
+                      className={`w-full h-1 rounded-lg appearance-none cursor-pointer ${
+                        theme === 'dark' ? 'bg-zinc-700 accent-indigo-500' : 'bg-zinc-300 accent-indigo-650'
+                      }`}
+                    />
+                  </div>
+
+                  {logoConfig.position === 'custom' && (
+                    <div className="flex flex-col gap-3 border-t pt-3 border-zinc-200 dark:border-zinc-800">
+                      <div className="flex flex-col gap-1">
+                        <span className={`text-[9px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-450' : 'text-zinc-500'}`}>
+                          Custom X Coord ({logoConfig.customXPercent}%)
+                        </span>
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          step={1}
+                          value={logoConfig.customXPercent}
+                          onChange={(e) => setLogoConfig(prev => ({ ...prev, customXPercent: Number(e.target.value) }))}
+                          className={`w-full h-1 rounded-lg appearance-none cursor-pointer ${
+                            theme === 'dark' ? 'bg-zinc-700 accent-indigo-500' : 'bg-zinc-300 accent-indigo-650'
+                          }`}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className={`text-[9px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-455' : 'text-zinc-500'}`}>
+                          Custom Y Coord ({logoConfig.customYPercent}%)
+                        </span>
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          step={1}
+                          value={logoConfig.customYPercent}
+                          onChange={(e) => setLogoConfig(prev => ({ ...prev, customYPercent: Number(e.target.value) }))}
+                          className={`w-full h-1 rounded-lg appearance-none cursor-pointer ${
+                            theme === 'dark' ? 'bg-zinc-700 accent-indigo-500' : 'bg-zinc-300 accent-indigo-650'
+                          }`}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Global Toolbar */}
         {loadedCount > 0 && (
           <div className={`flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-5 p-5 border rounded-2xl shadow-xl ${
@@ -1905,6 +2303,9 @@ export default function App() {
               textConfig={textConfig}
               showTextOverlay={showTextOverlays[size.id] !== undefined ? showTextOverlays[size.id] : (size.id !== 'runntv_logo')}
               setShowTextOverlay={(val) => setShowTextOverlays((prev) => ({ ...prev, [size.id]: val }))}
+              logoConfig={logoConfig}
+              showLogoOverlay={showLogoOverlays[size.id] !== undefined ? showLogoOverlays[size.id] : (size.id !== 'runntv_logo')}
+              setShowLogoOverlay={(val) => setShowLogoOverlays((prev) => ({ ...prev, [size.id]: val }))}
             />
           ))}
         </div>
