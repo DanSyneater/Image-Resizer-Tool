@@ -42,6 +42,101 @@ interface ImageSize {
   icon: any;
 }
 
+export interface TextOverlayConfig {
+  text: string;
+  fontFamily: string;
+  fontSizePercent: number;
+  color: string;
+  useGradient: boolean;
+  gradientStartColor: string;
+  gradientEndColor: string;
+  style: 'normal' | 'bold' | 'italic' | 'bold italic';
+  positionYPercent: number;
+  shadowEnabled: boolean;
+  shadowColor: string;
+  shadowBlur: number;
+  shadowOffsetX: number;
+  shadowOffsetY: number;
+}
+
+export const TYPOGRAPHY_PRESETS: Record<string, Omit<TextOverlayConfig, 'text'>> = {
+  blockbuster: {
+    fontFamily: 'Bebas Neue',
+    fontSizePercent: 14,
+    color: '#ffffff',
+    useGradient: true,
+    gradientStartColor: '#ffffff',
+    gradientEndColor: '#b3b3b3',
+    style: 'bold',
+    positionYPercent: 82,
+    shadowEnabled: true,
+    shadowColor: 'rgba(0, 0, 0, 0.9)',
+    shadowBlur: 12,
+    shadowOffsetX: 2,
+    shadowOffsetY: 5,
+  },
+  luxury: {
+    fontFamily: 'Cinzel',
+    fontSizePercent: 11,
+    color: '#ffffff',
+    useGradient: true,
+    gradientStartColor: '#ffffff',
+    gradientEndColor: '#d4af37',
+    style: 'bold',
+    positionYPercent: 83,
+    shadowEnabled: true,
+    shadowColor: 'rgba(0, 0, 0, 0.8)',
+    shadowBlur: 10,
+    shadowOffsetX: 1,
+    shadowOffsetY: 3,
+  },
+  modern: {
+    fontFamily: 'Outfit',
+    fontSizePercent: 10,
+    color: '#ffffff',
+    useGradient: false,
+    gradientStartColor: '#ffffff',
+    gradientEndColor: '#ffffff',
+    style: 'bold',
+    positionYPercent: 80,
+    shadowEnabled: true,
+    shadowColor: 'rgba(0, 0, 0, 0.65)',
+    shadowBlur: 8,
+    shadowOffsetX: 1,
+    shadowOffsetY: 2.5,
+  },
+  dramatic: {
+    fontFamily: 'Playfair Display',
+    fontSizePercent: 12,
+    color: '#ffffff',
+    useGradient: false,
+    gradientStartColor: '#ffffff',
+    gradientEndColor: '#ffffff',
+    style: 'bold italic',
+    positionYPercent: 80,
+    shadowEnabled: true,
+    shadowColor: 'rgba(0, 0, 0, 0.8)',
+    shadowBlur: 10,
+    shadowOffsetX: 2,
+    shadowOffsetY: 3.5,
+  },
+  calligraphy: {
+    fontFamily: 'Great Vibes',
+    fontSizePercent: 16,
+    color: '#ffffff',
+    useGradient: false,
+    gradientStartColor: '#ffffff',
+    gradientEndColor: '#ffffff',
+    style: 'normal',
+    positionYPercent: 84,
+    shadowEnabled: true,
+    shadowColor: 'rgba(0, 0, 0, 0.55)',
+    shadowBlur: 6,
+    shadowOffsetX: 1,
+    shadowOffsetY: 2,
+  }
+};
+
 const EMEDIA_VOD_BOX_SIZES: ImageSize[] = [
   { 
     id: 'emedia_box_poster', 
@@ -213,7 +308,9 @@ const getCroppedImg = async (
   pixelCrop: any,
   quality: number,
   targetSize: { width: number; height: number },
-  format: 'jpeg' | 'png'
+  format: 'jpeg' | 'png',
+  textConfig?: TextOverlayConfig,
+  showTextOverlay: boolean = false
 ): Promise<Blob | null> => {
   try {
     const img = new Image();
@@ -244,6 +341,69 @@ const getCroppedImg = async (
       targetSize.width,
       targetSize.height
     );
+
+    // Draw styled title text if active
+    if (showTextOverlay && textConfig && textConfig.text.trim()) {
+      ctx.save();
+
+      const fontWeight = textConfig.style.includes('bold') ? 'bold' : 'normal';
+      const fontStyle = textConfig.style.includes('italic') ? 'italic' : 'normal';
+
+      // Load custom font using document.fonts API to ensure accurate canvas rendering
+      try {
+        await document.fonts.load(`${fontWeight} ${fontStyle} 16px "${textConfig.fontFamily}"`);
+      } catch (err) {
+        console.warn('Font pre-loading bypassed:', err);
+      }
+
+      const fontSize = Math.round((textConfig.fontSizePercent / 100) * targetSize.height);
+      ctx.font = `${fontStyle} ${fontWeight} ${fontSize}px "${textConfig.fontFamily}"`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      if (textConfig.shadowEnabled) {
+        ctx.shadowColor = textConfig.shadowColor;
+        ctx.shadowBlur = textConfig.shadowBlur;
+        ctx.shadowOffsetX = textConfig.shadowOffsetX;
+        ctx.shadowOffsetY = textConfig.shadowOffsetY;
+      }
+
+      if (textConfig.useGradient) {
+        // Vertical gradient spanning the height of the canvas
+        const grad = ctx.createLinearGradient(0, 0, 0, targetSize.height);
+        grad.addColorStop(0, textConfig.gradientStartColor);
+        grad.addColorStop(1, textConfig.gradientEndColor);
+        ctx.fillStyle = grad;
+      } else {
+        ctx.fillStyle = textConfig.color;
+      }
+
+      const lines = textConfig.text.split('\n');
+      const lineHeight = fontSize * 1.15;
+      const totalTextHeight = lines.length * lineHeight;
+
+      // Calculate coordinates respecting the mandatory 20px padding from the canvas edges
+      const minPadding = 20;
+      let startY = (textConfig.positionYPercent / 100) * targetSize.height - (totalTextHeight / 2) + (lineHeight / 2);
+
+      // Boundary safety check for top and bottom edges
+      const absoluteMinY = minPadding + (fontSize / 2);
+      const absoluteMaxY = targetSize.height - minPadding - totalTextHeight + (fontSize / 2);
+
+      if (startY < absoluteMinY) {
+        startY = absoluteMinY;
+      } else if (startY > absoluteMaxY) {
+        startY = absoluteMaxY;
+      }
+
+      const x = targetSize.width / 2;
+      lines.forEach((line, index) => {
+        const lineY = startY + index * lineHeight;
+        ctx.fillText(line, x, lineY);
+      });
+
+      ctx.restore();
+    }
 
     const mimeType = format === 'png' ? 'image/png' : 'image/jpeg';
     return new Promise((resolve) => {
@@ -278,6 +438,9 @@ interface ImagePanelProps {
   globalSafetyShow: boolean;
   theme: 'dark' | 'light';
   filenamePrefix?: string;
+  textConfig?: TextOverlayConfig;
+  showTextOverlay: boolean;
+  setShowTextOverlay: (val: boolean) => void;
 }
 
 function ImagePanel({
@@ -299,6 +462,9 @@ function ImagePanel({
   globalSafetyShow,
   theme,
   filenamePrefix,
+  textConfig,
+  showTextOverlay,
+  setShowTextOverlay,
 }: ImagePanelProps) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [actualSizeKb, setActualSizeKb] = useState<number>(0);
@@ -310,7 +476,7 @@ function ImagePanel({
   useEffect(() => {
     let currentUrl: string | null = null;
     if (image && croppedAreaPixels) {
-      getCroppedImg(image, croppedAreaPixels, quality, size, exportFormat).then((blob) => {
+      getCroppedImg(image, croppedAreaPixels, quality, size, exportFormat, textConfig, showTextOverlay).then((blob) => {
         if (blob) {
           currentUrl = URL.createObjectURL(blob);
           setPreviewUrl(currentUrl);
@@ -324,7 +490,7 @@ function ImagePanel({
     return () => {
       if (currentUrl) URL.revokeObjectURL(currentUrl);
     };
-  }, [image, croppedAreaPixels, quality, size, exportFormat]);
+  }, [image, croppedAreaPixels, quality, size, exportFormat, textConfig, showTextOverlay]);
 
   const generateFileName = () => {
     const now = new Date();
@@ -336,7 +502,7 @@ function ImagePanel({
 
   const saveImage = async () => {
     if (image && croppedAreaPixels) {
-      const blob = await getCroppedImg(image, croppedAreaPixels, quality, size, exportFormat);
+      const blob = await getCroppedImg(image, croppedAreaPixels, quality, size, exportFormat, textConfig, showTextOverlay);
       if (blob) {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -373,7 +539,7 @@ function ImagePanel({
         return;
       }
 
-      const blob = await getCroppedImg(image, croppedAreaPixels, quality, size, exportFormat);
+      const blob = await getCroppedImg(image, croppedAreaPixels, quality, size, exportFormat, textConfig, showTextOverlay);
       if (blob) {
         if (handle) {
           const writable = await handle.createWritable();
@@ -501,15 +667,31 @@ function ImagePanel({
                   )}
                 </div>
                 
-                <div className="flex items-center gap-1.5">
-                  <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${sizeLimitExceeded ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500'}`} />
-                  <span className={`text-xs font-mono font-bold ${sizeLimitExceeded ? 'text-rose-500' : (theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700')}`}>
-                    Size: {actualSizeKb} KB
-                  </span>
-                  {sizeLimitExceeded && (
-                    <span className="text-[10px] font-bold text-rose-500 bg-rose-500/10 px-1 py-0.5 rounded border border-rose-500/25">
-                      &gt; {size.sizeLimitKb >= 1024 ? '1MB' : `${size.sizeLimitKb}KB`} limit!
+                <div className="flex items-center justify-between w-full mt-2 pt-2 border-t border-zinc-200 dark:border-zinc-800">
+                  <div className="flex items-center gap-1.5">
+                    <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${sizeLimitExceeded ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500'}`} />
+                    <span className={`text-xs font-mono font-bold ${sizeLimitExceeded ? 'text-rose-500' : (theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700')}`}>
+                      Size: {actualSizeKb} KB
                     </span>
+                    {sizeLimitExceeded && (
+                      <span className="text-[10px] font-bold text-rose-500 bg-rose-500/10 px-1 py-0.5 rounded border border-rose-500/25">
+                        &gt; {size.sizeLimitKb >= 1024 ? '1MB' : `${size.sizeLimitKb}KB`} limit!
+                      </span>
+                    )}
+                  </div>
+                  
+                  {textConfig && textConfig.text.trim() && (
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                      <input 
+                        type="checkbox" 
+                        checked={showTextOverlay} 
+                        onChange={(e) => setShowTextOverlay(e.target.checked)} 
+                        className="rounded border-zinc-300 dark:border-zinc-700 text-indigo-650 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer" 
+                      />
+                      <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-550'}`}>
+                        Overlay Title
+                      </span>
+                    </label>
                   )}
                 </div>
               </div>
@@ -774,6 +956,26 @@ export default function App() {
   const [filenamePrefix, setFilenamePrefix] = useState<string>('');
   const [isZipping, setIsZipping] = useState<boolean>(false);
 
+  // Text Overlay settings
+  const [textConfig, setTextConfig] = useState<TextOverlayConfig>({
+    text: '',
+    fontFamily: 'Bebas Neue',
+    fontSizePercent: 12,
+    color: '#ffffff',
+    useGradient: false,
+    gradientStartColor: '#ffffff',
+    gradientEndColor: '#cccccc',
+    style: 'bold',
+    positionYPercent: 82,
+    shadowEnabled: true,
+    shadowColor: 'rgba(0, 0, 0, 0.85)',
+    shadowBlur: 10,
+    shadowOffsetX: 2,
+    shadowOffsetY: 4,
+  });
+
+  const [showTextOverlays, setShowTextOverlays] = useState<Record<string, boolean>>({});
+
   const masterFileInputRef = useRef<HTMLInputElement>(null);
 
   const activeSizes = activeTab === 'emedia_vod' 
@@ -821,6 +1023,16 @@ export default function App() {
     setFilenamePrefix('');
   };
 
+  const applyPreset = (presetKey: string) => {
+    const preset = TYPOGRAPHY_PRESETS[presetKey];
+    if (preset) {
+      setTextConfig((prev) => ({
+        ...prev,
+        ...preset,
+      }));
+    }
+  };
+
   // Batch apply export formats
   const batchApplyFormat = (fmt: 'jpeg' | 'png') => {
     const newFormats = { ...exportFormats };
@@ -848,9 +1060,10 @@ export default function App() {
       const cropArea = croppedAreas[size.id];
       const qual = qualities[size.id] !== undefined ? qualities[size.id] : 0.8;
       const fmt = exportFormats[size.id] || size.format;
+      const localShowOverlay = showTextOverlays[size.id] !== undefined ? showTextOverlays[size.id] : (size.id !== 'runntv_logo');
       
       if (img && cropArea) {
-        const blob = await getCroppedImg(img, cropArea, qual, size, fmt);
+        const blob = await getCroppedImg(img, cropArea, qual, size, fmt, textConfig, localShowOverlay);
         if (blob) {
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
@@ -882,9 +1095,10 @@ export default function App() {
         const cropArea = croppedAreas[size.id];
         const qual = qualities[size.id] !== undefined ? qualities[size.id] : 0.8;
         const fmt = exportFormats[size.id] || size.format;
+        const localShowOverlay = showTextOverlays[size.id] !== undefined ? showTextOverlays[size.id] : (size.id !== 'runntv_logo');
         
         if (img && cropArea) {
-          const blob = await getCroppedImg(img, cropArea, qual, size, fmt);
+          const blob = await getCroppedImg(img, cropArea, qual, size, fmt, textConfig, localShowOverlay);
           if (blob) {
             const ext = fmt === 'png' ? 'png' : 'jpg';
             const baseName = filenamePrefix && filenamePrefix.trim() ? filenamePrefix.trim() : 'image';
@@ -1158,6 +1372,277 @@ export default function App() {
           </div>
         </div>
 
+        {/* Title Overlay Customizer */}
+        <div className={`border rounded-2xl p-6 shadow-lg mb-8 transition ${
+          theme === 'dark' ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200/90 shadow-zinc-200/30'
+        }`}>
+          <div className="flex items-center justify-between mb-4 border-b pb-3 border-zinc-200 dark:border-zinc-800">
+            <div className="flex items-center gap-2.5">
+              <Sparkles className="w-4 h-4 text-indigo-500 shrink-0" />
+              <div>
+                <h2 className={`text-sm font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-200' : 'text-zinc-850'}`}>
+                  Creative Title Overlay
+                </h2>
+                <p className={`text-[10px] ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-450'}`}>
+                  Design high-quality creative text overlays that are printed directly onto the resized canvases.
+                </p>
+              </div>
+            </div>
+            
+            {textConfig.text.trim() && (
+              <button
+                onClick={() => setTextConfig(prev => ({ ...prev, text: '' }))}
+                className="text-[10px] font-bold text-rose-500 bg-rose-500/10 hover:bg-rose-500/20 px-2.5 py-1 rounded-lg border border-rose-500/25 transition cursor-pointer"
+              >
+                Clear Title
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Column 1: Input & Presets */}
+            <div className="lg:col-span-6 flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5">
+                <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                  Title Typography Content (Supports Multi-line)
+                </span>
+                <textarea
+                  rows={2}
+                  value={textConfig.text}
+                  onChange={(e) => setTextConfig(prev => ({ ...prev, text: e.target.value }))}
+                  placeholder="Enter Title Text (e.g. DURBAN GEN)"
+                  className={`w-full px-3 py-2 text-xs font-semibold rounded-xl border focus:outline-none transition ${
+                    theme === 'dark' 
+                      ? 'bg-zinc-950 border-zinc-800 text-zinc-100 focus:border-indigo-500' 
+                      : 'bg-zinc-50 border-zinc-200 text-zinc-900 focus:border-indigo-650'
+                  }`}
+                />
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                  Creative Presets
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { key: 'blockbuster', label: '🎬 Blockbuster', desc: 'Bebas Neue' },
+                    { key: 'luxury', label: '🏆 Luxury Gold', desc: 'Cinzel Serif' },
+                    { key: 'modern', label: '⚡ Cyber Modern', desc: 'Outfit Geometric' },
+                    { key: 'dramatic', label: '🎭 Dramatic Italics', desc: 'Playfair Display' },
+                    { key: 'calligraphy', label: '✒️ Calligraphy Script', desc: 'Great Vibes' },
+                  ].map((preset) => (
+                    <button
+                      key={preset.key}
+                      onClick={() => applyPreset(preset.key)}
+                      className={`px-3 py-1.5 border text-xs rounded-xl font-semibold transition cursor-pointer text-left flex flex-col justify-center ${
+                        theme === 'dark' 
+                          ? 'bg-zinc-950 border-zinc-800 hover:border-zinc-650 text-zinc-300 hover:text-white' 
+                          : 'bg-zinc-50 border-zinc-200 hover:border-zinc-350 text-zinc-700 hover:text-zinc-950 shadow-sm'
+                      }`}
+                    >
+                      <span className="text-[11px] font-bold">{preset.label}</span>
+                      <span className="text-[8px] opacity-60 font-mono tracking-tighter">{preset.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Column 2: Advanced Controls */}
+            <div className="lg:col-span-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Typography controls */}
+              <div className="flex flex-col gap-3.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-col gap-1 w-full">
+                    <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                      Font Family
+                    </span>
+                    <select
+                      value={textConfig.fontFamily}
+                      onChange={(e) => setTextConfig(prev => ({ ...prev, fontFamily: e.target.value }))}
+                      className={`w-full border rounded-lg px-2 py-1 text-xs outline-none focus:border-indigo-500 ${
+                        theme === 'dark' ? 'bg-zinc-950 border-zinc-800 text-zinc-200' : 'bg-white border-zinc-300 text-zinc-800'
+                      }`}
+                    >
+                      <option value="Bebas Neue">Bebas Neue (Cinematic Display)</option>
+                      <option value="Anton">Anton (Solid Display)</option>
+                      <option value="Outfit">Outfit (Geometric Modern)</option>
+                      <option value="Montserrat">Montserrat (Classic Wide)</option>
+                      <option value="Playfair Display">Playfair Display (Editorial Serif)</option>
+                      <option value="Cinzel">Cinzel (Classic Roman Serif)</option>
+                      <option value="Merriweather">Merriweather (Sturdy Display Serif)</option>
+                      <option value="Great Vibes">Great Vibes (Calligraphy Script)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-col gap-1 w-1/2">
+                    <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                      Font Style
+                    </span>
+                    <select
+                      value={textConfig.style}
+                      onChange={(e) => setTextConfig(prev => ({ ...prev, style: e.target.value as any }))}
+                      className={`w-full border rounded-lg px-2 py-1 text-xs outline-none focus:border-indigo-500 ${
+                        theme === 'dark' ? 'bg-zinc-950 border-zinc-800 text-zinc-200' : 'bg-white border-zinc-300 text-zinc-800'
+                      }`}
+                    >
+                      <option value="normal">Normal</option>
+                      <option value="bold">Bold</option>
+                      <option value="italic">Italic</option>
+                      <option value="bold italic">Bold Italic</option>
+                    </select>
+                  </div>
+
+                  <div className="flex flex-col gap-1 w-1/2">
+                    <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                      Size ({textConfig.fontSizePercent}%)
+                    </span>
+                    <input
+                      type="range"
+                      min={4}
+                      max={24}
+                      step={0.5}
+                      value={textConfig.fontSizePercent}
+                      onChange={(e) => setTextConfig(prev => ({ ...prev, fontSizePercent: Number(e.target.value) }))}
+                      className={`w-full h-1 rounded-lg appearance-none cursor-pointer ${
+                        theme === 'dark' ? 'bg-zinc-700 accent-indigo-500' : 'bg-zinc-300 accent-indigo-650'
+                      }`}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                    Vertical Position ({textConfig.positionYPercent}%)
+                  </span>
+                  <input
+                    type="range"
+                    min={10}
+                    max={90}
+                    step={1}
+                    value={textConfig.positionYPercent}
+                    onChange={(e) => setTextConfig(prev => ({ ...prev, positionYPercent: Number(e.target.value) }))}
+                    className={`w-full h-1 rounded-lg appearance-none cursor-pointer ${
+                      theme === 'dark' ? 'bg-zinc-700 accent-indigo-500' : 'bg-zinc-300 accent-indigo-650'
+                    }`}
+                  />
+                </div>
+              </div>
+
+              {/* Color & Shadow controls */}
+              <div className="flex flex-col gap-3.5 border-t sm:border-t-0 sm:border-l pt-3.5 sm:pt-0 sm:pl-4 border-zinc-200 dark:border-zinc-800">
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                      Linear Gradient
+                    </span>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={textConfig.useGradient} 
+                        onChange={(e) => setTextConfig(prev => ({ ...prev, useGradient: e.target.checked }))} 
+                        className="sr-only peer" 
+                      />
+                      <div className={`w-7 h-4 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:height-3 after:width-3 after:transition-all peer-checked:bg-indigo-500 ${
+                        theme === 'dark' ? 'bg-zinc-700' : 'bg-zinc-300'
+                      }`}></div>
+                    </label>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    {textConfig.useGradient ? (
+                      <>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="color"
+                            value={textConfig.gradientStartColor}
+                            onChange={(e) => setTextConfig(prev => ({ ...prev, gradientStartColor: e.target.value }))}
+                            className="w-6 h-6 border-0 rounded cursor-pointer bg-transparent"
+                          />
+                          <span className="text-[9px] font-mono opacity-80">{textConfig.gradientStartColor}</span>
+                        </div>
+                        <span className="text-xs opacity-50">➔</span>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="color"
+                            value={textConfig.gradientEndColor}
+                            onChange={(e) => setTextConfig(prev => ({ ...prev, gradientEndColor: e.target.value }))}
+                            className="w-6 h-6 border-0 rounded cursor-pointer bg-transparent"
+                          />
+                          <span className="text-[9px] font-mono opacity-80">{textConfig.gradientEndColor}</span>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="color"
+                          value={textConfig.color}
+                          onChange={(e) => setTextConfig(prev => ({ ...prev, color: e.target.value }))}
+                          className="w-6 h-6 border-0 rounded cursor-pointer bg-transparent"
+                        />
+                        <span className="text-[10px] font-mono font-bold">{textConfig.color}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                      Text Shadow / Outline
+                    </span>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={textConfig.shadowEnabled} 
+                        onChange={(e) => setTextConfig(prev => ({ ...prev, shadowEnabled: e.target.checked }))} 
+                        className="sr-only peer" 
+                      />
+                      <div className={`w-7 h-4 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:height-3 after:width-3 after:transition-all peer-checked:bg-indigo-500 ${
+                        theme === 'dark' ? 'bg-zinc-700' : 'bg-zinc-300'
+                      }`}></div>
+                    </label>
+                  </div>
+
+                  {textConfig.shadowEnabled && (
+                    <div className="flex items-center gap-3">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[8px] uppercase tracking-wider opacity-60">Color</span>
+                        <select
+                          value={textConfig.shadowColor}
+                          onChange={(e) => setTextConfig(prev => ({ ...prev, shadowColor: e.target.value }))}
+                          className={`border rounded px-1.5 py-0.5 text-[10px] focus:border-indigo-500 ${
+                            theme === 'dark' ? 'bg-zinc-950 border-zinc-800 text-zinc-300' : 'bg-white border-zinc-300 text-zinc-700'
+                          }`}
+                        >
+                          <option value="rgba(0, 0, 0, 0.9)">Dense Black (90%)</option>
+                          <option value="rgba(0, 0, 0, 0.7)">Medium Black (70%)</option>
+                          <option value="rgba(0, 0, 0, 0.4)">Soft Black (40%)</option>
+                          <option value="rgba(255, 255, 255, 0.6)">Soft White (60%)</option>
+                        </select>
+                      </div>
+                      
+                      <div className="flex flex-col gap-0.5 w-16">
+                        <span className="text-[8px] uppercase tracking-wider opacity-60">Blur ({textConfig.shadowBlur}px)</span>
+                        <input
+                          type="range"
+                          min={0}
+                          max={20}
+                          value={textConfig.shadowBlur}
+                          onChange={(e) => setTextConfig(prev => ({ ...prev, shadowBlur: Number(e.target.value) }))}
+                          className="w-full"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Global Toolbar */}
         {loadedCount > 0 && (
           <div className={`flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-5 p-5 border rounded-2xl shadow-xl ${
@@ -1339,6 +1824,9 @@ export default function App() {
               globalSafetyShow={globalSafetyShow}
               theme={theme}
               filenamePrefix={filenamePrefix}
+              textConfig={textConfig}
+              showTextOverlay={showTextOverlays[size.id] !== undefined ? showTextOverlays[size.id] : (size.id !== 'runntv_logo')}
+              setShowTextOverlay={(val) => setShowTextOverlays((prev) => ({ ...prev, [size.id]: val }))}
             />
           ))}
         </div>
