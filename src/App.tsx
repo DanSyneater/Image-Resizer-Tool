@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import Cropper from 'react-easy-crop';
+import JSZip from 'jszip';
 import { 
   Upload, 
   Download, 
@@ -276,6 +277,7 @@ interface ImagePanelProps {
   setExportFormat: (f: 'jpeg' | 'png') => void;
   globalSafetyShow: boolean;
   theme: 'dark' | 'light';
+  filenamePrefix?: string;
 }
 
 function ImagePanel({
@@ -296,6 +298,7 @@ function ImagePanel({
   setExportFormat,
   globalSafetyShow,
   theme,
+  filenamePrefix,
 }: ImagePanelProps) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [actualSizeKb, setActualSizeKb] = useState<number>(0);
@@ -326,7 +329,7 @@ function ImagePanel({
   const generateFileName = () => {
     const now = new Date();
     const dateStr = `${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`;
-    const baseName = imageName ? imageName.replace(/\.[^/.]+$/, '') : `image`;
+    const baseName = filenamePrefix && filenamePrefix.trim() ? filenamePrefix.trim() : (imageName ? imageName.replace(/\.[^/.]+$/, '') : `image`);
     const ext = exportFormat === 'png' ? 'png' : 'jpg';
     return `${baseName}${size.suffix}_${dateStr}.${ext}`;
   };
@@ -539,30 +542,34 @@ function ImagePanel({
             </div>
 
             {/* Micro Controls & Position Fine-Tuning */}
-            <div className={`grid grid-cols-1 md:grid-cols-2 gap-3 p-3 border rounded-xl ${
+            <div className={`flex flex-col gap-3.5 p-3.5 border rounded-xl ${
               theme === 'dark' ? 'bg-zinc-900/40 border-zinc-700/50' : 'bg-zinc-50 border-zinc-200'
             }`}>
               {/* Sliders */}
-              <div className="flex flex-col gap-2.5 justify-center">
-                <div className="flex items-center gap-2">
-                  <span className={`text-[10px] font-bold w-10 uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>Zoom</span>
-                  <input 
-                    type="range" 
-                    min={1} 
-                    max={3} 
-                    step={0.05} 
-                    value={zoom} 
-                    onChange={(e) => setZoom(Number(e.target.value))} 
-                    className={`flex-grow h-1 rounded-lg appearance-none cursor-pointer ${
-                      theme === 'dark' ? 'bg-zinc-700 accent-indigo-500' : 'bg-zinc-300 accent-indigo-600'
-                    }`} 
-                  />
-                  <span className={`text-[10px] font-mono font-bold min-w-8 text-right ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                    {zoom.toFixed(2)}x
-                  </span>
-                </div>
-                {size.hasTitleSafety && (
-                  <div className="flex items-center justify-between mt-1">
+              <div className="flex items-center gap-3">
+                <span className={`text-[10px] font-bold w-10 uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>Zoom</span>
+                <input 
+                  type="range" 
+                  min={1} 
+                  max={3} 
+                  step={0.05} 
+                  value={zoom} 
+                  onChange={(e) => setZoom(Number(e.target.value))} 
+                  className={`flex-grow h-1 rounded-lg appearance-none cursor-pointer ${
+                    theme === 'dark' ? 'bg-zinc-700 accent-indigo-500' : 'bg-zinc-300 accent-indigo-650'
+                  }`} 
+                />
+                <span className={`text-[10px] font-mono font-bold min-w-8 text-right ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                  {zoom.toFixed(2)}x
+                </span>
+              </div>
+
+              <div className="h-px bg-zinc-200 dark:bg-zinc-800/60" />
+
+              {/* Nudge & Title Safety controls */}
+              <div className="flex items-center justify-between gap-4">
+                {size.hasTitleSafety ? (
+                  <div className="flex items-center gap-2">
                     <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>Title Safety</span>
                     <label className="relative inline-flex items-center cursor-pointer">
                       <input 
@@ -575,69 +582,63 @@ function ImagePanel({
                         theme === 'dark' ? 'bg-zinc-700' : 'bg-zinc-300'
                       }`}></div>
                       <span className={`ml-1.5 text-[10px] font-semibold ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}`}>
-                        {localSafetyShow ? 'Visible' : 'Hidden'}
+                        {localSafetyShow ? 'ON' : 'OFF'}
                       </span>
                     </label>
                   </div>
+                ) : (
+                  <div className="text-[10px] text-zinc-500 font-semibold italic">No safety grid</div>
                 )}
-              </div>
 
-              {/* D-Pad position fine tuning */}
-              <div className={`flex items-center justify-center gap-2 border-t md:border-t-0 md:border-l pt-2.5 md:pt-0 md:pl-3 ${
-                theme === 'dark' ? 'border-zinc-700/60' : 'border-zinc-200'
-              }`}>
-                <span className={`text-[10px] font-bold uppercase tracking-wider mr-auto md:hidden ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>Position</span>
-                <span className={`hidden md:inline text-[10px] font-bold uppercase tracking-wider mr-2 ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>Nudge</span>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1.5">
+                  <span className={`text-[10px] font-bold uppercase tracking-wider mr-1 ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>Nudge</span>
                   <button 
                     onClick={() => nudge('left', 2)} 
                     className={`p-1.5 border rounded-lg transition cursor-pointer ${
                       theme === 'dark' 
                         ? 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700' 
-                        : 'bg-white border-zinc-300 text-zinc-600 hover:text-zinc-950 hover:bg-zinc-50 shadow-sm'
+                        : 'bg-white border-zinc-300 text-zinc-650 hover:text-zinc-950 hover:bg-zinc-50 shadow-sm'
                     }`}
                     title="Nudge Left"
                   >
-                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <ArrowLeft className="w-3 h-3" />
                   </button>
-                  <div className="flex flex-col gap-1">
-                    <button 
-                      onClick={() => nudge('up', 2)} 
-                      className={`p-1.5 border rounded-lg transition cursor-pointer ${
-                        theme === 'dark' 
-                          ? 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700' 
-                          : 'bg-white border-zinc-300 text-zinc-650 hover:text-zinc-950 hover:bg-zinc-50 shadow-sm'
-                      }`}
-                      title="Nudge Up"
-                    >
-                      <ArrowUp className="w-3.5 h-3.5" />
-                    </button>
-                    <button 
-                      onClick={() => nudge('down', 2)} 
-                      className={`p-1.5 border rounded-lg transition cursor-pointer ${
-                        theme === 'dark' 
-                          ? 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700' 
-                          : 'bg-white border-zinc-300 text-zinc-650 hover:text-zinc-950 hover:bg-zinc-50 shadow-sm'
-                      }`}
-                      title="Nudge Down"
-                    >
-                      <ArrowDown className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                  <button 
+                    onClick={() => nudge('up', 2)} 
+                    className={`p-1.5 border rounded-lg transition cursor-pointer ${
+                      theme === 'dark' 
+                        ? 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700' 
+                        : 'bg-white border-zinc-300 text-zinc-650 hover:text-zinc-950 hover:bg-zinc-50 shadow-sm'
+                    }`}
+                    title="Nudge Up"
+                  >
+                    <ArrowUp className="w-3 h-3" />
+                  </button>
+                  <button 
+                    onClick={() => nudge('down', 2)} 
+                    className={`p-1.5 border rounded-lg transition cursor-pointer ${
+                      theme === 'dark' 
+                        ? 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700' 
+                        : 'bg-white border-zinc-300 text-zinc-650 hover:text-zinc-950 hover:bg-zinc-50 shadow-sm'
+                    }`}
+                    title="Nudge Down"
+                  >
+                    <ArrowDown className="w-3 h-3" />
+                  </button>
                   <button 
                     onClick={() => nudge('right', 2)} 
                     className={`p-1.5 border rounded-lg transition cursor-pointer ${
                       theme === 'dark' 
                         ? 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700' 
-                        : 'bg-white border-zinc-300 text-zinc-600 hover:text-zinc-950 hover:bg-zinc-50 shadow-sm'
+                        : 'bg-white border-zinc-300 text-zinc-650 hover:text-zinc-950 hover:bg-zinc-50 shadow-sm'
                     }`}
                     title="Nudge Right"
                   >
-                    <ArrowRight className="w-3.5 h-3.5" />
+                    <ArrowRight className="w-3 h-3" />
                   </button>
                   <button 
                     onClick={() => { setCrop({ x: 0, y: 0 }); setZoom(1); }} 
-                    className={`p-1.5 ml-1 border rounded-lg text-[10px] font-bold transition cursor-pointer ${
+                    className={`p-1.5 border rounded-lg text-[10px] font-bold transition cursor-pointer ${
                       theme === 'dark' 
                         ? 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700' 
                         : 'bg-white border-zinc-300 text-zinc-650 hover:text-zinc-950 hover:bg-zinc-50 shadow-sm'
@@ -769,6 +770,9 @@ export default function App() {
   const [croppedAreas, setCroppedAreas] = useState<Record<string, any>>({});
   const [qualities, setQualities] = useState<Record<string, number>>({});
   const [exportFormats, setExportFormats] = useState<Record<string, 'jpeg' | 'png'>>({});
+  
+  const [filenamePrefix, setFilenamePrefix] = useState<string>('');
+  const [isZipping, setIsZipping] = useState<boolean>(false);
 
   const masterFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -799,6 +803,7 @@ export default function App() {
       setImageNames(newNames);
       setCrops(newCrops);
       setZooms(newZooms);
+      setFilenamePrefix(file.name.replace(/\.[^/.]+$/, ''));
     });
     reader.readAsDataURL(file);
   };
@@ -813,6 +818,25 @@ export default function App() {
     });
     setImages(newImages);
     setImageNames(newNames);
+    setFilenamePrefix('');
+  };
+
+  // Batch apply export formats
+  const batchApplyFormat = (fmt: 'jpeg' | 'png') => {
+    const newFormats = { ...exportFormats };
+    activeSizes.forEach((size) => {
+      newFormats[size.id] = fmt;
+    });
+    setExportFormats(newFormats);
+  };
+
+  // Batch apply export qualities
+  const batchApplyQuality = (qual: number) => {
+    const newQualities = { ...qualities };
+    activeSizes.forEach((size) => {
+      newQualities[size.id] = qual;
+    });
+    setQualities(newQualities);
   };
 
   // Download all cropped files sequentially
@@ -833,7 +857,7 @@ export default function App() {
           a.href = url;
           const now = new Date();
           const dateStr = `${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`;
-          const baseName = imageNames[size.id] ? imageNames[size.id].replace(/\.[^/.]+$/, '') : `image`;
+          const baseName = filenamePrefix && filenamePrefix.trim() ? filenamePrefix.trim() : (imageNames[size.id] ? imageNames[size.id].replace(/\.[^/.]+$/, '') : `image`);
           const ext = fmt === 'png' ? 'png' : 'jpg';
           a.download = `${baseName}${size.suffix}_${dateStr}.${ext}`;
           a.click();
@@ -844,6 +868,49 @@ export default function App() {
       }
     }
     setIsDownloadingAll(false);
+  };
+
+  // Pack and download all cropped files as a single ZIP
+  const downloadAllAsZip = async () => {
+    setIsZipping(true);
+    try {
+      const zip = new JSZip();
+      let addedCount = 0;
+      
+      for (const size of activeSizes) {
+        const img = images[size.id];
+        const cropArea = croppedAreas[size.id];
+        const qual = qualities[size.id] !== undefined ? qualities[size.id] : 0.8;
+        const fmt = exportFormats[size.id] || size.format;
+        
+        if (img && cropArea) {
+          const blob = await getCroppedImg(img, cropArea, qual, size, fmt);
+          if (blob) {
+            const ext = fmt === 'png' ? 'png' : 'jpg';
+            const baseName = filenamePrefix && filenamePrefix.trim() ? filenamePrefix.trim() : 'image';
+            zip.file(`${baseName}${size.suffix}.${ext}`, blob);
+            addedCount++;
+          }
+        }
+      }
+      
+      if (addedCount > 0) {
+        const content = await zip.generateAsync({ type: 'blob' });
+        const url = URL.createObjectURL(content);
+        const a = document.createElement('a');
+        a.href = url;
+        const now = new Date();
+        const dateStr = `${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`;
+        const zipPrefix = filenamePrefix && filenamePrefix.trim() ? filenamePrefix.trim() : 'eMedia_Resizes';
+        a.download = `${zipPrefix}_${dateStr}.zip`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    } catch (error) {
+      console.error('Error generating zip:', error);
+    } finally {
+      setIsZipping(false);
+    }
   };
 
   // Count active images
@@ -1093,20 +1160,101 @@ export default function App() {
 
         {/* Global Toolbar */}
         {loadedCount > 0 && (
-          <div className={`flex flex-col sm:flex-row items-center justify-between gap-4 p-4 border rounded-2xl shadow-lg ${
+          <div className={`flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-5 p-5 border rounded-2xl shadow-xl ${
             theme === 'dark' ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200/90 shadow-zinc-200/30'
           }`}>
-            <div className="flex items-center gap-3">
-              <span className="flex h-2 w-2 relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-450 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-              <span className={`text-xs font-bold ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}`}>
-                {loadedCount} of {activeSizes.length} size fields populated
-              </span>
+            {/* Column 1: Info and Filename Prefix */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 flex-grow">
+              <div className="flex items-center gap-3 shrink-0">
+                <span className="flex h-2.5 w-2.5 relative">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                </span>
+                <div className="flex flex-col">
+                  <span className={`text-xs font-extrabold ${theme === 'dark' ? 'text-zinc-200' : 'text-zinc-800'}`}>
+                    {loadedCount} of {activeSizes.length} Sized
+                  </span>
+                  <span className={`text-[10px] ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                    Populated Panels
+                  </span>
+                </div>
+              </div>
+              
+              <div className="h-px w-full sm:h-8 sm:w-px bg-zinc-200 dark:bg-zinc-800 shrink-0" />
+
+              {/* Custom Export Prefix */}
+              <div className="flex flex-col gap-1 w-full sm:w-48 shrink-0">
+                <span className={`text-[9px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                  Custom Export Prefix
+                </span>
+                <input 
+                  type="text" 
+                  value={filenamePrefix} 
+                  onChange={(e) => setFilenamePrefix(e.target.value)} 
+                  placeholder="e.g. DurbanGen_S2" 
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-xl border focus:outline-none transition ${
+                    theme === 'dark' 
+                      ? 'bg-zinc-950 border-zinc-800 text-zinc-200 focus:border-indigo-500' 
+                      : 'bg-zinc-50 border-zinc-200 text-zinc-900 focus:border-indigo-650'
+                  }`}
+                />
+              </div>
+
+              <div className="h-px w-full sm:h-8 sm:w-px bg-zinc-200 dark:bg-zinc-800 shrink-0 hidden md:block" />
+
+              {/* Batch Settings */}
+              <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+                <div className="flex flex-col gap-1">
+                  <span className={`text-[9px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                    Batch Set Format
+                  </span>
+                  <div className="flex gap-1.5">
+                    <button
+                      onClick={() => batchApplyFormat('jpeg')}
+                      className={`px-2.5 py-1 text-[11px] font-bold rounded-lg border transition cursor-pointer ${
+                        theme === 'dark' 
+                          ? 'bg-zinc-950 border-zinc-800 hover:border-zinc-700 text-zinc-300'
+                          : 'bg-zinc-50 border-zinc-205 hover:border-zinc-300 text-zinc-700'
+                      }`}
+                    >
+                      JPEG
+                    </button>
+                    <button
+                      onClick={() => batchApplyFormat('png')}
+                      className={`px-2.5 py-1 text-[11px] font-bold rounded-lg border transition cursor-pointer ${
+                        theme === 'dark' 
+                          ? 'bg-zinc-950 border-zinc-800 hover:border-zinc-700 text-zinc-300'
+                          : 'bg-zinc-50 border-zinc-205 hover:border-zinc-300 text-zinc-700'
+                      }`}
+                    >
+                      PNG
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <span className={`text-[9px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                    Batch Set Quality
+                  </span>
+                  <select
+                    defaultValue="0.8"
+                    onChange={(e) => batchApplyQuality(Number(e.target.value))}
+                    className={`border rounded-lg px-2.5 py-1 text-xs outline-none focus:border-indigo-500 ${
+                      theme === 'dark' ? 'bg-zinc-950 border-zinc-800 text-zinc-200' : 'bg-white border-zinc-300 text-zinc-800'
+                    }`}
+                  >
+                    <option value={1.0}>Max Quality (1.0)</option>
+                    <option value={0.9}>Very High (0.9)</option>
+                    <option value={0.8}>Recommended (0.8)</option>
+                    <option value={0.6}>Balanced (0.6)</option>
+                    <option value={0.4}>High Compression (0.4)</option>
+                  </select>
+                </div>
+              </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-end">
+            {/* Column 2: Global Grid, Download Sequential, Download ZIP */}
+            <div className="flex flex-wrap items-center gap-3 shrink-0 justify-end mt-4 lg:mt-0">
               {activeSizes.some(s => s.hasTitleSafety) && (
                 <button
                   onClick={() => setGlobalSafetyShow(!globalSafetyShow)}
@@ -1117,24 +1265,46 @@ export default function App() {
                   }`}
                 >
                   {globalSafetyShow ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                  Global Title Safety Grid: {globalSafetyShow ? 'ON' : 'OFF'}
+                  Safety Grid
                 </button>
               )}
 
               <button
                 onClick={downloadAll}
-                disabled={isDownloadingAll || loadedCount === 0}
-                className="flex items-center justify-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-emerald-600/10 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
+                disabled={isDownloadingAll || isZipping || loadedCount === 0}
+                className={`flex items-center justify-center gap-2 px-4 py-2 border rounded-xl text-xs font-bold transition shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                  theme === 'dark' 
+                    ? 'bg-zinc-800 border-zinc-750 text-zinc-200 hover:bg-zinc-700 hover:text-white' 
+                    : 'bg-white border-zinc-300 text-zinc-700 hover:bg-zinc-50'
+                }`}
               >
                 {isDownloadingAll ? (
                   <>
                     <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    Exporting...
+                    Downloading...
                   </>
                 ) : (
                   <>
                     <Download className="w-3.5 h-3.5" />
-                    Download All Cropped ({loadedCount})
+                    Sequential Download
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={downloadAllAsZip}
+                disabled={isDownloadingAll || isZipping || loadedCount === 0}
+                className="flex items-center justify-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-emerald-600/10 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isZipping ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    Zipping...
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-3.5 h-3.5" />
+                    Download All as ZIP
                   </>
                 )}
               </button>
@@ -1168,6 +1338,7 @@ export default function App() {
               setExportFormat={(val) => setExportFormats((prev) => ({ ...prev, [size.id]: val }))}
               globalSafetyShow={globalSafetyShow}
               theme={theme}
+              filenamePrefix={filenamePrefix}
             />
           ))}
         </div>
