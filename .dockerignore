@@ -1,0 +1,13 @@
+node_modules
+dist
+.git
+sd-webui-forge
+generate-images
+*.png
+*.jpg
+*.jpeg
+Screenshot*
+extract.js
+extracted_code.txt
+.env
+.env.local

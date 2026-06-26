@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+generate-images/*
+!generate-images/.gitkeep
+sd-webui-forge/

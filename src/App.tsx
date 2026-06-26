@@ -1,4 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, type CSSProperties, type DragEvent } from 'react';
+import { exportPngBlob } from './pngCompress';
+import { useTheme } from './hooks/useTheme';
 import Cropper from 'react-easy-crop';
 import JSZip from 'jszip';
 import { 
@@ -26,7 +28,11 @@ import {
   Eye,
   EyeOff,
   Sun,
-  Moon
+  Moon,
+  BookmarkPlus,
+  Link2,
+  Unlink2,
+  Wand2
 } from 'lucide-react';
 
 interface ImageSize {
@@ -40,6 +46,8 @@ interface ImageSize {
   hasTitleSafety: boolean;
   description: string;
   icon: any;
+  defaultQuality?: number;
+  pngOnly?: boolean;
 }
 
 export interface TextOverlayConfig {
@@ -70,6 +78,146 @@ export interface LogoOverlayConfig {
   customYPercent: number;            // Custom vertical coordinate (0% to 100%)
   paddingPercent: number;            // Safety margin distance from edges (1% to 15%)
 }
+
+export interface BadgeOverlayConfig {
+  text: string;
+  badgeType: 'none' | 'diagonal-ribbon' | 'horizontal-banner' | 'rectangular-block';
+  badgeColor: string;
+  textColor: string;
+  fontSizePercent: number;
+  position: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'top-center' | 'bottom-center' | 'center';
+  opacity: number;
+  bannerXPercent: number;
+  bannerYPercent: number;
+  bannerWidthPercent: number;
+  bannerHeightPercent: number;
+  textXPercent: number;
+  textYPercent: number;
+  textLinkedToBanner: boolean;
+}
+
+interface SavedBadgePreset {
+  id: string;
+  name: string;
+  savedAt: number;
+  config: BadgeOverlayConfig;
+}
+
+const SAVED_BADGE_PRESETS_KEY = 'emedia-saved-badge-presets';
+
+const DEFAULT_BADGE_CONFIG: BadgeOverlayConfig = {
+  text: '',
+  badgeType: 'none',
+  badgeColor: '#ef4444',
+  textColor: '#ffffff',
+  fontSizePercent: 10,
+  position: 'bottom-right',
+  opacity: 1.0,
+  bannerXPercent: 50,
+  bannerYPercent: 88,
+  bannerWidthPercent: 100,
+  bannerHeightPercent: 7,
+  textXPercent: 50,
+  textYPercent: 88,
+  textLinkedToBanner: true,
+};
+
+const withBadgeDefaults = (config: Partial<BadgeOverlayConfig>): BadgeOverlayConfig => ({
+  ...DEFAULT_BADGE_CONFIG,
+  ...config,
+});
+
+const loadSavedBadgePresets = (): SavedBadgePreset[] => {
+  try {
+    const raw = localStorage.getItem(SAVED_BADGE_PRESETS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as SavedBadgePreset[];
+    return parsed.map((preset) => ({
+      ...preset,
+      config: withBadgeDefaults(preset.config),
+    }));
+  } catch {
+    return [];
+  }
+};
+
+const persistSavedBadgePresets = (presets: SavedBadgePreset[]) => {
+  localStorage.setItem(SAVED_BADGE_PRESETS_KEY, JSON.stringify(presets));
+};
+
+const BADGE_ANCHOR_LAYOUT: Record<string, Pick<BadgeOverlayConfig, 'bannerYPercent' | 'textYPercent' | 'bannerXPercent' | 'textXPercent'>> = {
+  'top-center': { bannerXPercent: 50, bannerYPercent: 10, textXPercent: 50, textYPercent: 10 },
+  center: { bannerXPercent: 50, bannerYPercent: 50, textXPercent: 50, textYPercent: 50 },
+  'bottom-center': { bannerXPercent: 50, bannerYPercent: 88, textXPercent: 50, textYPercent: 88 },
+};
+
+const BADGE_PRESETS: Array<{ label: string; config: Partial<BadgeOverlayConfig> }> = [
+  {
+    label: 'New Season Ribbon',
+    config: {
+      text: 'NEW\nSEASON',
+      badgeType: 'diagonal-ribbon',
+      position: 'bottom-right',
+      badgeColor: '#e50914',
+      textColor: '#ffffff',
+      fontSizePercent: 8,
+    },
+  },
+  {
+    label: 'Weekly Episodes Banner',
+    config: {
+      text: '5 EPISODES EVERY TUESDAY',
+      badgeType: 'horizontal-banner',
+      position: 'bottom-center',
+      badgeColor: '#e50914',
+      textColor: '#ffffff',
+      fontSizePercent: 4,
+      bannerXPercent: 50,
+      bannerYPercent: 88,
+      bannerWidthPercent: 100,
+      bannerHeightPercent: 7,
+      textXPercent: 50,
+      textYPercent: 88,
+      textLinkedToBanner: true,
+    },
+  },
+];
+
+const getExportFormat = (size: ImageSize, formats: Record<string, 'jpeg' | 'png'>): 'jpeg' | 'png' =>
+  size.pngOnly ? 'png' : (formats[size.id] || size.format);
+
+const ACTIVE_TAB_STORAGE_KEY = 'emedia-image-resizer-tab';
+
+const canvasToBlob = (
+  canvas: HTMLCanvasElement,
+  mimeType: string,
+  quality?: number
+): Promise<Blob | null> =>
+  new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), mimeType, quality);
+  });
+
+const readImageFile = (file: File): Promise<{ dataUrl: string; name: string }> =>
+  new Promise((resolve, reject) => {
+    if (!file.type.startsWith('image/')) {
+      reject(new Error('Not an image file'));
+      return;
+    }
+    const reader = new FileReader();
+    reader.addEventListener('load', () => resolve({ dataUrl: reader.result as string, name: file.name }));
+    reader.addEventListener('error', () => reject(reader.error));
+    reader.readAsDataURL(file);
+  });
+
+const getDroppedImageFile = (e: DragEvent): File | null => {
+  const file = e.dataTransfer.files?.[0];
+  return file?.type.startsWith('image/') ? file : null;
+};
+
+const preventDragDefaults = (e: DragEvent) => {
+  e.preventDefault();
+  e.stopPropagation();
+};
 
 export const TYPOGRAPHY_PRESETS: Record<string, Omit<TextOverlayConfig, 'text'>> = {
   blockbuster: {
@@ -266,6 +414,8 @@ const RUNNTV_SIZES: ImageSize[] = [
     format: 'png', 
     sizeLimitKb: 1024, 
     hasTitleSafety: true,
+    pngOnly: true,
+    defaultQuality: 0.7,
     description: 'Horizontal TV Cover Art. Title only, no cast/views/awards.',
     icon: Tv 
   },
@@ -278,6 +428,8 @@ const RUNNTV_SIZES: ImageSize[] = [
     format: 'png', 
     sizeLimitKb: 1024, 
     hasTitleSafety: true,
+    pngOnly: true,
+    defaultQuality: 0.7,
     description: 'Horizontal Mobile Cover Art. Title only, no cast/views/awards.',
     icon: Smartphone 
   },
@@ -290,6 +442,8 @@ const RUNNTV_SIZES: ImageSize[] = [
     format: 'png', 
     sizeLimitKb: 1024, 
     hasTitleSafety: true,
+    pngOnly: true,
+    defaultQuality: 0.7,
     description: 'Horizontal Web Cover Art. Title only, no cast/views/awards.',
     icon: Globe 
   },
@@ -302,6 +456,8 @@ const RUNNTV_SIZES: ImageSize[] = [
     format: 'png', 
     sizeLimitKb: 1024, 
     hasTitleSafety: true,
+    pngOnly: true,
+    defaultQuality: 0.7,
     description: 'Vertical Hero Art. Title only, no cast/views/awards.',
     icon: ImageIcon 
   },
@@ -314,6 +470,7 @@ const RUNNTV_SIZES: ImageSize[] = [
     format: 'png', 
     sizeLimitKb: 1024, 
     hasTitleSafety: false,
+    pngOnly: true,
     description: 'High-res square Channel Logo (1080x1080 png).',
     icon: Sparkles 
   },
@@ -324,12 +481,14 @@ const getCroppedImg = async (
   imageSrc: string,
   pixelCrop: any,
   quality: number,
-  targetSize: { width: number; height: number },
+  targetSize: ImageSize,
   format: 'jpeg' | 'png',
   textConfig?: TextOverlayConfig,
   showTextOverlay: boolean = false,
   logoConfig?: LogoOverlayConfig,
-  showLogoOverlay: boolean = false
+  showLogoOverlay: boolean = false,
+  badgeConfig?: BadgeOverlayConfig,
+  showBadgeOverlay: boolean = false
 ): Promise<Blob | null> => {
   try {
     const img = new Image();
@@ -505,14 +664,97 @@ const getCroppedImg = async (
       }
     }
 
-    const mimeType = format === 'png' ? 'image/png' : 'image/jpeg';
-    return new Promise((resolve) => {
-      canvas.toBlob(
-        (blob) => resolve(blob),
-        mimeType,
-        format === 'png' ? undefined : quality
-      );
-    });
+    // Draw badge/banner overlays if active
+    if (showBadgeOverlay && badgeConfig && badgeConfig.badgeType !== 'none' && badgeConfig.text.trim()) {
+      const sizeFactor = targetSize.height;
+      const fontSize = Math.round((badgeConfig.fontSizePercent / 100) * sizeFactor);
+      const badgeFont = `italic 900 ${fontSize}px "Montserrat", "Arial Black", "Impact", sans-serif`;
+      const lines = badgeConfig.text.split('\n').map((line) => line.trim()).filter(Boolean);
+
+      try {
+        await document.fonts.load(`italic 900 ${fontSize}px "Montserrat"`);
+      } catch {
+        // Font may already be loaded
+      }
+
+      const drawBadgeText = (x: number, y: number, lineHeight = fontSize * 1.1) => {
+        ctx.fillStyle = badgeConfig.textColor;
+        ctx.font = badgeFont;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const totalHeight = lines.length * lineHeight;
+        lines.forEach((line, index) => {
+          ctx.fillText(line.toUpperCase(), x, y - totalHeight / 2 + lineHeight / 2 + index * lineHeight);
+        });
+      };
+
+      if (badgeConfig.badgeType === 'diagonal-ribbon') {
+        ctx.save();
+        ctx.globalAlpha = badgeConfig.opacity;
+        ctx.fillStyle = badgeConfig.badgeColor;
+
+        const ribbonLength = Math.min(targetSize.width, targetSize.height) * 0.62;
+        const ribbonThickness = fontSize * (lines.length > 1 ? 2.6 : 2.1);
+        let tx = 0;
+        let ty = 0;
+        let rot = 0;
+
+        if (badgeConfig.position === 'top-left') {
+          tx = 0; ty = 0; rot = -Math.PI / 4;
+        } else if (badgeConfig.position === 'top-right') {
+          tx = targetSize.width; ty = 0; rot = Math.PI / 4;
+        } else if (badgeConfig.position === 'bottom-left') {
+          tx = 0; ty = targetSize.height; rot = Math.PI / 4;
+        } else {
+          tx = targetSize.width; ty = targetSize.height; rot = -Math.PI / 4;
+        }
+
+        ctx.translate(tx, ty);
+        ctx.rotate(rot);
+        ctx.fillRect(-ribbonLength / 2, -ribbonThickness / 2, ribbonLength, ribbonThickness);
+        drawBadgeText(0, 0);
+        ctx.restore();
+      } else if (badgeConfig.badgeType === 'horizontal-banner' || badgeConfig.badgeType === 'rectangular-block') {
+        ctx.save();
+        ctx.globalAlpha = badgeConfig.opacity;
+        ctx.font = badgeFont;
+
+        const bannerWidth = (badgeConfig.bannerWidthPercent / 100) * targetSize.width;
+        const bannerHeight = (badgeConfig.bannerHeightPercent / 100) * targetSize.height;
+        const bannerX = (badgeConfig.bannerXPercent / 100) * targetSize.width - bannerWidth / 2;
+        const bannerY = (badgeConfig.bannerYPercent / 100) * targetSize.height - bannerHeight / 2;
+        const textX = (badgeConfig.textXPercent / 100) * targetSize.width;
+        const textY = (badgeConfig.textYPercent / 100) * targetSize.height;
+
+        ctx.fillStyle = badgeConfig.badgeColor;
+
+        if (badgeConfig.badgeType === 'horizontal-banner') {
+          ctx.fillRect(bannerX, bannerY, bannerWidth, bannerHeight);
+        } else {
+          const radius = Math.max(4, bannerHeight * 0.15);
+          ctx.beginPath();
+          ctx.moveTo(bannerX + radius, bannerY);
+          ctx.lineTo(bannerX + bannerWidth - radius, bannerY);
+          ctx.quadraticCurveTo(bannerX + bannerWidth, bannerY, bannerX + bannerWidth, bannerY + radius);
+          ctx.lineTo(bannerX + bannerWidth, bannerY + bannerHeight - radius);
+          ctx.quadraticCurveTo(bannerX + bannerWidth, bannerY + bannerHeight, bannerX + bannerWidth - radius, bannerY + bannerHeight);
+          ctx.lineTo(bannerX + radius, bannerY + bannerHeight);
+          ctx.quadraticCurveTo(bannerX, bannerY + bannerHeight, bannerX, bannerY + bannerHeight - radius);
+          ctx.lineTo(bannerX, bannerY + radius);
+          ctx.quadraticCurveTo(bannerX, bannerY, bannerX + radius, bannerY);
+          ctx.closePath();
+          ctx.fill();
+        }
+
+        drawBadgeText(textX, textY);
+        ctx.restore();
+      }
+    }
+
+    if (format === 'png') {
+      return await exportPngBlob(canvas, targetSize.sizeLimitKb * 1024, quality);
+    }
+    return canvasToBlob(canvas, 'image/jpeg', quality);
   } catch (error) {
     console.error('Error generating cropped image:', error);
     return null;
@@ -544,6 +786,12 @@ interface ImagePanelProps {
   logoConfig?: LogoOverlayConfig;
   showLogoOverlay: boolean;
   setShowLogoOverlay: (val: boolean) => void;
+  badgeConfig?: BadgeOverlayConfig;
+  showBadgeOverlay: boolean;
+  setShowBadgeOverlay: (val: boolean) => void;
+  onFocus?: () => void;
+  isFocused?: boolean;
+  key?: any;
 }
 
 function ImagePanel({
@@ -571,32 +819,119 @@ function ImagePanel({
   logoConfig,
   showLogoOverlay,
   setShowLogoOverlay,
+  badgeConfig,
+  showBadgeOverlay,
+  setShowBadgeOverlay,
+  onFocus,
+  isFocused,
 }: ImagePanelProps) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [actualSizeKb, setActualSizeKb] = useState<number>(0);
   const [localSafetyShow, setLocalSafetyShow] = useState<boolean>(true);
+  const [isDragOver, setIsDragOver] = useState<boolean>(false);
+  const [isPreviewLoading, setIsPreviewLoading] = useState<boolean>(false);
+  const [isAutoFitting, setIsAutoFitting] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const showSafety = size.hasTitleSafety && globalSafetyShow && localSafetyShow;
 
+  const loadImageFile = async (file: File) => {
+    try {
+      const { dataUrl, name } = await readImageFile(file);
+      setImage(dataUrl);
+      setImageName(name);
+      setCrop({ x: 0, y: 0 });
+      setZoom(1);
+      onFocus?.();
+    } catch {
+      // Ignore non-image drops
+    }
+  };
+
+  const handleDragEnter = (e: DragEvent) => {
+    preventDragDefaults(e);
+    if (getDroppedImageFile(e) || e.dataTransfer.types.includes('Files')) {
+      setIsDragOver(true);
+    }
+  };
+
+  const handleDragOver = (e: DragEvent) => {
+    preventDragDefaults(e);
+    e.dataTransfer.dropEffect = 'copy';
+  };
+
+  const handleDragLeave = (e: DragEvent) => {
+    preventDragDefaults(e);
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setIsDragOver(false);
+    }
+  };
+
+  const handleDrop = (e: DragEvent) => {
+    preventDragDefaults(e);
+    setIsDragOver(false);
+    const file = getDroppedImageFile(e);
+    if (file) {
+      void loadImageFile(file);
+    }
+  };
+
+  const dropZoneClass = isDragOver
+    ? (theme === 'dark'
+        ? 'border-indigo-400 bg-indigo-500/10 text-indigo-200'
+        : 'border-indigo-500 bg-indigo-50 text-indigo-700')
+    : (theme === 'dark'
+        ? 'border-zinc-700 hover:border-zinc-500 text-zinc-400 hover:bg-zinc-800/20'
+        : 'border-zinc-300 hover:border-zinc-400 text-zinc-550 hover:bg-zinc-100/30');
+
   useEffect(() => {
     let currentUrl: string | null = null;
     if (image && croppedAreaPixels) {
-      getCroppedImg(image, croppedAreaPixels, quality, size, exportFormat, textConfig, showTextOverlay, logoConfig, showLogoOverlay).then((blob) => {
+      setIsPreviewLoading(true);
+      getCroppedImg(
+        image, 
+        croppedAreaPixels, 
+        quality, 
+        size, 
+        exportFormat, 
+        textConfig, 
+        showTextOverlay, 
+        logoConfig, 
+        showLogoOverlay,
+        badgeConfig,
+        showBadgeOverlay
+      ).then((blob) => {
         if (blob) {
           currentUrl = URL.createObjectURL(blob);
           setPreviewUrl(currentUrl);
           setActualSizeKb(Math.round(blob.size / 1024));
+        } else {
+          setPreviewUrl(null);
+          setActualSizeKb(0);
         }
+        setIsPreviewLoading(false);
       });
     } else {
       setPreviewUrl(null);
       setActualSizeKb(0);
+      setIsPreviewLoading(false);
     }
     return () => {
       if (currentUrl) URL.revokeObjectURL(currentUrl);
     };
-  }, [image, croppedAreaPixels, quality, size, exportFormat, textConfig, showTextOverlay, logoConfig, showLogoOverlay]);
+  }, [
+    image,
+    croppedAreaPixels,
+    quality,
+    size,
+    exportFormat,
+    textConfig,
+    showTextOverlay,
+    logoConfig,
+    showLogoOverlay,
+    badgeConfig,
+    showBadgeOverlay,
+  ]);
 
   const generateFileName = () => {
     const now = new Date();
@@ -608,7 +943,19 @@ function ImagePanel({
 
   const saveImage = async () => {
     if (image && croppedAreaPixels) {
-      const blob = await getCroppedImg(image, croppedAreaPixels, quality, size, exportFormat, textConfig, showTextOverlay, logoConfig, showLogoOverlay);
+      const blob = await getCroppedImg(
+        image, 
+        croppedAreaPixels, 
+        quality, 
+        size, 
+        exportFormat, 
+        textConfig, 
+        showTextOverlay, 
+        logoConfig, 
+        showLogoOverlay,
+        badgeConfig,
+        showBadgeOverlay
+      );
       if (blob) {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -645,7 +992,19 @@ function ImagePanel({
         return;
       }
 
-      const blob = await getCroppedImg(image, croppedAreaPixels, quality, size, exportFormat, textConfig, showTextOverlay, logoConfig, showLogoOverlay);
+      const blob = await getCroppedImg(
+        image, 
+        croppedAreaPixels, 
+        quality, 
+        size, 
+        exportFormat, 
+        textConfig, 
+        showTextOverlay, 
+        logoConfig, 
+        showLogoOverlay,
+        badgeConfig,
+        showBadgeOverlay
+      );
       if (blob) {
         if (handle) {
           const writable = await handle.createWritable();
@@ -675,12 +1034,51 @@ function ImagePanel({
 
   const sizeLimitExceeded = actualSizeKb > size.sizeLimitKb;
 
+  const autoFitToLimit = async () => {
+    if (!image || !croppedAreaPixels) return;
+    setIsAutoFitting(true);
+    try {
+      const maxBytes = size.sizeLimitKb * 1024;
+      const strengthSteps = size.pngOnly
+        ? [0.88, 0.75, 0.65, 0.5, 0.35]
+        : [0.88, 0.75, 0.65, 0.5];
+
+      for (const strength of strengthSteps) {
+        const blob = await getCroppedImg(
+          image,
+          croppedAreaPixels,
+          strength,
+          size,
+          size.pngOnly ? 'png' : 'jpeg',
+          textConfig,
+          showTextOverlay,
+          logoConfig,
+          showLogoOverlay,
+          badgeConfig,
+          showBadgeOverlay
+        );
+        if (blob && blob.size <= maxBytes) {
+          if (!size.pngOnly) setExportFormat('jpeg');
+          setQuality(strength);
+          return;
+        }
+      }
+      setQuality(strengthSteps[strengthSteps.length - 1]);
+    } finally {
+      setIsAutoFitting(false);
+    }
+  };
+
   return (
-    <div className={`border rounded-2xl p-6 shadow-xl flex flex-col gap-4 transition duration-300 ${
+    <div
+      className={`border rounded-2xl p-6 shadow-xl flex flex-col gap-4 transition duration-300 ${
       theme === 'dark' 
         ? 'bg-zinc-800 border-zinc-700/80 hover:border-zinc-600' 
         : 'bg-white border-zinc-200/90 hover:border-zinc-300 shadow-zinc-200/50'
-    }`}>
+    } ${isFocused ? (theme === 'dark' ? 'ring-2 ring-indigo-500/60 border-indigo-500/40' : 'ring-2 ring-indigo-500/40 border-indigo-400') : ''}`}
+      onFocus={onFocus}
+      onMouseEnter={onFocus}
+    >
       {/* Header */}
       <div className="flex justify-between items-start gap-2">
         <div>
@@ -710,138 +1108,199 @@ function ImagePanel({
       <div className="flex-grow flex flex-col gap-4">
         {image ? (
           <div className="flex flex-col gap-4">
-            {/* Split Preview and Export details */}
-            <div className={`flex gap-4 items-center border p-3 rounded-xl ${
+            {/* Large export preview — shows titles, logos & badges */}
+            <div className={`flex flex-col gap-2 border p-3 rounded-xl ${
               theme === 'dark' ? 'bg-zinc-900/50 border-zinc-700/50' : 'bg-zinc-50 border-zinc-200'
             }`}>
-              <div 
-                className={`relative rounded-lg overflow-hidden shrink-0 border ${
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className={`font-semibold text-xs ${theme === 'dark' ? 'text-zinc-200' : 'text-zinc-800'}`}>
+                    Final Export Preview
+                  </p>
+                  <p className={`text-[10px] ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-500'}`}>
+                    Titles, logos & badges applied · {size.width}×{size.height}px
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap justify-end">
+                  {textConfig && textConfig.text.trim() && (
+                    <label className="flex items-center gap-1 cursor-pointer select-none">
+                      <input type="checkbox" checked={showTextOverlay} onChange={(e) => setShowTextOverlay(e.target.checked)} className="rounded h-3 w-3 cursor-pointer" />
+                      <span className={`text-[9px] font-bold uppercase ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-600'}`}>Title</span>
+                    </label>
+                  )}
+                  {logoConfig?.imageSrc && (
+                    <label className="flex items-center gap-1 cursor-pointer select-none">
+                      <input type="checkbox" checked={showLogoOverlay} onChange={(e) => setShowLogoOverlay(e.target.checked)} className="rounded h-3 w-3 cursor-pointer" />
+                      <span className={`text-[9px] font-bold uppercase ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-600'}`}>Logo</span>
+                    </label>
+                  )}
+                  {badgeConfig && badgeConfig.badgeType !== 'none' && badgeConfig.text.trim() && (
+                    <label className="flex items-center gap-1 cursor-pointer select-none">
+                      <input type="checkbox" checked={showBadgeOverlay} onChange={(e) => setShowBadgeOverlay(e.target.checked)} className="rounded h-3 w-3 cursor-pointer" />
+                      <span className={`text-[9px] font-bold uppercase ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-600'}`}>Badge</span>
+                    </label>
+                  )}
+                </div>
+              </div>
+
+              <div
+                className={`relative w-full rounded-xl overflow-hidden border flex items-center justify-center mx-auto ${
                   theme === 'dark' ? 'bg-zinc-950 border-zinc-800' : 'bg-zinc-100 border-zinc-200'
-                }`} 
-                style={{ width: '90px', aspectRatio: `${size.width}/${size.height}` }}
+                }`}
+                style={{ maxWidth: '100%', aspectRatio: `${size.width}/${size.height}`, maxHeight: '340px' }}
               >
-                {previewUrl && (
+                {isPreviewLoading && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/20 z-10">
+                    <RefreshCw className={`w-6 h-6 animate-spin ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`} />
+                  </div>
+                )}
+                {previewUrl ? (
                   <>
-                    <img src={previewUrl} className="w-full h-full object-cover" alt="Preview" />
+                    <img src={previewUrl} className="w-full h-full object-contain" alt="Final export preview" />
                     {showSafety && (
-                      <div 
-                        className="preview-safety-overlay" 
-                        style={{
-                          '--safety-margin-x': safetyMarginX,
-                          '--safety-margin-y': safetyMarginY
-                        } as React.CSSProperties}
+                      <div
+                        className="preview-safety-overlay"
+                        style={{ '--safety-margin-x': safetyMarginX, '--safety-margin-y': safetyMarginY } as CSSProperties}
                       />
                     )}
                   </>
+                ) : (
+                  <div className={`flex flex-col items-center gap-2 p-4 ${theme === 'dark' ? 'text-zinc-600' : 'text-zinc-400'}`}>
+                    <RefreshCw className="w-5 h-5 animate-spin opacity-50" />
+                    <span className="text-[10px] font-semibold">Building preview…</span>
+                  </div>
                 )}
-              </div>
-              
-              <div className="flex-1 min-w-0">
-                <p className={`font-semibold text-xs mb-1.5 ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}`}>Export Specs</p>
-                <div className="flex flex-col gap-1.5 mb-2">
-                  <div className="flex items-center gap-1.5">
-                    <span className={`text-[10px] font-bold uppercase tracking-wider w-12 shrink-0 ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>Format</span>
-                    <select 
-                      value={exportFormat} 
-                      onChange={(e) => setExportFormat(e.target.value as 'jpeg' | 'png')} 
-                      className={`flex-grow border rounded-lg px-2 py-1 text-xs outline-none focus:border-indigo-500 ${
-                        theme === 'dark' ? 'bg-zinc-900 border-zinc-700 text-zinc-200' : 'bg-white border-zinc-300 text-zinc-800'
-                      }`}
-                    >
-                      <option value="png">PNG (Lossless)</option>
-                      <option value="jpeg">JPEG (Optimized)</option>
-                    </select>
-                  </div>
-                  
-                  {exportFormat === 'jpeg' && (
-                    <div className="flex items-center gap-1.5">
-                      <span className={`text-[10px] font-bold uppercase tracking-wider w-12 shrink-0 ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>Quality</span>
-                      <select 
-                        value={quality} 
-                        onChange={(e) => setQuality(Number(e.target.value))} 
-                        className={`flex-grow border rounded-lg px-2 py-1 text-xs outline-none focus:border-indigo-500 ${
-                          theme === 'dark' ? 'bg-zinc-900 border-zinc-700 text-zinc-200' : 'bg-white border-zinc-300 text-zinc-800'
-                        }`}
-                      >
-                        <option value={1.0}>Max Quality (1.0)</option>
-                        <option value={0.9}>Very High (0.9)</option>
-                        <option value={0.8}>Recommended (0.8)</option>
-                        <option value={0.6}>Balanced (0.6)</option>
-                        <option value={0.4}>High Compression (0.4)</option>
-                      </select>
-                    </div>
-                  )}
-                </div>
-                
-                <div className="flex items-center justify-between w-full mt-2 pt-2 border-t border-zinc-200 dark:border-zinc-800">
-                  <div className="flex items-center gap-1.5">
-                    <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${sizeLimitExceeded ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500'}`} />
-                    <span className={`text-xs font-mono font-bold ${sizeLimitExceeded ? 'text-rose-500' : (theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700')}`}>
-                      Size: {actualSizeKb} KB
-                    </span>
-                    {sizeLimitExceeded && (
-                      <span className="text-[10px] font-bold text-rose-500 bg-rose-500/10 px-1 py-0.5 rounded border border-rose-500/25">
-                        &gt; {size.sizeLimitKb >= 1024 ? '1MB' : `${size.sizeLimitKb}KB`} limit!
-                      </span>
-                    )}
-                  </div>
-                  
-                  <div className="flex items-center gap-3">
-                    {textConfig && textConfig.text.trim() && (
-                      <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                        <input 
-                          type="checkbox" 
-                          checked={showTextOverlay} 
-                          onChange={(e) => setShowTextOverlay(e.target.checked)} 
-                          className="rounded border-zinc-300 dark:border-zinc-700 text-indigo-650 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer" 
-                        />
-                        <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-550'}`}>
-                          Title
-                        </span>
-                      </label>
-                    )}
-                    {logoConfig && logoConfig.imageSrc && (
-                      <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                        <input 
-                          type="checkbox" 
-                          checked={showLogoOverlay} 
-                          onChange={(e) => setShowLogoOverlay(e.target.checked)} 
-                          className="rounded border-zinc-300 dark:border-zinc-700 text-indigo-650 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer" 
-                        />
-                        <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-550'}`}>
-                          Logo
-                        </span>
-                      </label>
-                    )}
-                  </div>
-                </div>
               </div>
             </div>
 
-            {/* Cropper Box */}
-            <div className={`relative w-full h-[240px] rounded-xl overflow-hidden border ${
-              theme === 'dark' ? 'bg-zinc-950 border-zinc-700' : 'bg-zinc-100 border-zinc-200'
+            {/* Compact export specs bar */}
+            <div className={`flex flex-wrap items-center gap-3 border px-3 py-2.5 rounded-xl ${
+              theme === 'dark' ? 'bg-zinc-900/40 border-zinc-700/50' : 'bg-white border-zinc-200'
             }`}>
-              <Cropper
-                image={image}
-                crop={crop}
-                zoom={zoom}
-                aspect={size.width / size.height}
-                onCropChange={setCrop}
-                onZoomChange={setZoom}
-                onCropComplete={(_area, pixels) => setCroppedAreaPixels(pixels)}
-                classes={{
-                  containerClassName: 'reactEasyCrop_Container',
-                  mediaClassName: 'reactEasyCrop_Media',
-                  cropAreaClassName: showSafety ? 'crop-area-safety-margin' : '',
-                }}
-                style={{
-                  cropAreaStyle: showSafety ? {
-                    '--safety-margin-x': safetyMarginX,
-                    '--safety-margin-y': safetyMarginY,
-                  } as React.CSSProperties : {},
-                }}
-              />
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className={`text-[9px] font-bold uppercase shrink-0 ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-500'}`}>Format</span>
+                {size.pngOnly ? (
+                  <span className={`px-2 py-1 text-[11px] font-bold rounded-lg border ${
+                    theme === 'dark' ? 'bg-teal-500/10 border-teal-500/30 text-teal-400' : 'bg-teal-600/10 border-teal-600/20 text-teal-700'
+                  }`}>
+                    PNG (Required)
+                  </span>
+                ) : (
+                  <select
+                    value={exportFormat}
+                    onChange={(e) => setExportFormat(e.target.value as 'jpeg' | 'png')}
+                    className={`border rounded-lg px-2 py-1 text-[11px] outline-none focus:border-indigo-500 ${
+                      theme === 'dark' ? 'bg-zinc-900 border-zinc-700 text-zinc-200' : 'bg-white border-zinc-300 text-zinc-800'
+                    }`}
+                  >
+                    <option value="jpeg">JPEG (Recommended)</option>
+                    <option value="png">PNG</option>
+                  </select>
+                )}
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <span className={`text-[9px] font-bold uppercase shrink-0 ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-500'}`}>
+                  {size.pngOnly || exportFormat === 'png' ? 'PNG Compression' : 'Quality'}
+                </span>
+                <select
+                  value={quality}
+                  onChange={(e) => setQuality(Number(e.target.value))}
+                  className={`border rounded-lg px-2 py-1 text-[11px] outline-none focus:border-indigo-500 ${
+                    theme === 'dark' ? 'bg-zinc-900 border-zinc-700 text-zinc-200' : 'bg-white border-zinc-300 text-zinc-800'
+                  }`}
+                >
+                  {size.pngOnly || exportFormat === 'png' ? (
+                    <>
+                      <option value={0.95}>High quality</option>
+                      <option value={0.88}>Optimized (under 1MB)</option>
+                      <option value={0.7}>Balanced</option>
+                      <option value={0.5}>Smaller file</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value={0.95}>Very High (0.95)</option>
+                      <option value={0.88}>Recommended (0.88)</option>
+                      <option value={0.8}>Balanced (0.8)</option>
+                      <option value={0.65}>Smaller file (0.65)</option>
+                      <option value={0.5}>High compression (0.5)</option>
+                    </>
+                  )}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <div className={`w-2 h-2 rounded-full shrink-0 ${sizeLimitExceeded ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500'}`} />
+                <span className={`text-[11px] font-mono font-bold ${sizeLimitExceeded ? 'text-rose-500' : (theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700')}`}>
+                  {actualSizeKb} KB
+                </span>
+                {sizeLimitExceeded && (
+                  <span className="text-[9px] font-bold text-rose-500 bg-rose-500/10 px-1 py-0.5 rounded border border-rose-500/25">
+                    &gt; {size.sizeLimitKb >= 1024 ? '1MB' : `${size.sizeLimitKb}KB`}
+                  </span>
+                )}
+              </div>
+
+              {sizeLimitExceeded && (
+                <button
+                  onClick={() => void autoFitToLimit()}
+                  disabled={isAutoFitting}
+                  className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 cursor-pointer disabled:opacity-50 ml-auto"
+                >
+                  <Wand2 className={`w-3 h-3 ${isAutoFitting ? 'animate-spin' : ''}`} />
+                  {isAutoFitting ? 'Compressing…' : size.pngOnly ? 'Compress PNG to limit' : 'Auto-fit to limit'}
+                </button>
+              )}
+
+              {size.pngOnly && !sizeLimitExceeded && (
+                <span className={`text-[9px] font-semibold ml-auto ${theme === 'dark' ? 'text-teal-400' : 'text-teal-600'}`}>
+                  Palette-optimized PNG
+                </span>
+              )}
+            </div>
+
+            {/* Compact crop editor */}
+            <div className={`flex flex-col gap-1.5 ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+              <p className="text-[10px] font-bold uppercase tracking-wider">Adjust Source Crop</p>
+              <div
+                className={`relative w-full h-[150px] rounded-xl overflow-hidden border transition ${
+                  theme === 'dark' ? 'bg-zinc-950 border-zinc-700' : 'bg-zinc-100 border-zinc-200'
+                } ${isDragOver ? 'border-indigo-500 ring-2 ring-indigo-500/30' : ''}`}
+                onDragEnter={handleDragEnter}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+              >
+                <Cropper
+                  image={image}
+                  crop={crop}
+                  zoom={zoom}
+                  aspect={size.width / size.height}
+                  onCropChange={setCrop}
+                  onZoomChange={setZoom}
+                  onCropComplete={(_area, pixels) => setCroppedAreaPixels(pixels)}
+                  classes={{
+                    containerClassName: 'reactEasyCrop_Container',
+                    mediaClassName: 'reactEasyCrop_Media',
+                    cropAreaClassName: showSafety ? 'crop-area-safety-margin' : '',
+                  }}
+                  style={{
+                    cropAreaStyle: showSafety ? {
+                      '--safety-margin-x': safetyMarginX,
+                      '--safety-margin-y': safetyMarginY,
+                    } as CSSProperties : {},
+                  }}
+                />
+                {isDragOver && (
+                  <div className="absolute inset-0 z-20 flex items-center justify-center bg-indigo-600/20 pointer-events-none">
+                    <div className={`px-3 py-1.5 rounded-lg border text-[10px] font-bold ${
+                      theme === 'dark' ? 'bg-zinc-900/90 border-indigo-400 text-indigo-200' : 'bg-white/95 border-indigo-500 text-indigo-700'
+                    }`}>
+                      Drop to replace
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Micro Controls & Position Fine-Tuning */}
@@ -991,45 +1450,30 @@ function ImagePanel({
           </div>
         ) : (
           <div 
-            className={`w-full h-[320px] border-2 border-dashed rounded-2xl flex flex-col items-center justify-center cursor-pointer transition duration-300 ${
-              theme === 'dark' 
-                ? 'border-zinc-700 hover:border-zinc-500 text-zinc-400 hover:bg-zinc-800/20' 
-                : 'border-zinc-300 hover:border-zinc-400 text-zinc-550 hover:bg-zinc-100/30'
-            }`}
+            className={`w-full h-[320px] border-2 border-dashed rounded-2xl flex flex-col items-center justify-center cursor-pointer transition duration-300 ${dropZoneClass}`}
             onClick={() => fileInputRef.current?.click()}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => {
-              e.preventDefault();
-              if (e.dataTransfer.files[0]) {
-                const file = e.dataTransfer.files[0];
-                const reader = new FileReader();
-                reader.addEventListener('load', () => {
-                  setImage(reader.result as string);
-                  setImageName(file.name);
-                });
-                reader.readAsDataURL(file);
-              }
-            }}
+            onDragEnter={handleDragEnter}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
           >
             <div className={`p-4 border rounded-2xl mb-3 shadow-md ${
               theme === 'dark' ? 'bg-zinc-800 border-zinc-700 text-indigo-400' : 'bg-white border-zinc-200 text-indigo-600'
             }`}>
               <Upload size={28} />
             </div>
-            <p className={`text-sm font-semibold ${theme === 'dark' ? 'text-zinc-200' : 'text-zinc-800'}`}>Click or drop image here</p>
+            <p className={`text-sm font-semibold ${theme === 'dark' ? 'text-zinc-200' : 'text-zinc-800'}`}>
+              {isDragOver ? 'Release to load image' : 'Click or drop image here'}
+            </p>
             <p className={`text-[11px] mt-1.5 ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-450'}`}>For {size.name} ({size.width}x{size.height})</p>
             <input 
               type="file" 
               ref={fileInputRef} 
               onChange={(e) => {
-                if (e.target.files?.[0]) {
-                  const file = e.target.files[0];
-                  const reader = new FileReader();
-                  reader.addEventListener('load', () => {
-                    setImage(reader.result as string);
-                    setImageName(file.name);
-                  });
-                  reader.readAsDataURL(file);
+                const file = e.target.files?.[0];
+                if (file) {
+                  void loadImageFile(file);
+                  e.target.value = '';
                 }
               }} 
               accept="image/*" 
@@ -1060,10 +1504,19 @@ function ImagePanel({
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'emedia_vod' | 'emedia_vod_box' | 'runntv'>('emedia_vod');
+  const [activeTab, setActiveTab] = useState<'emedia_vod' | 'emedia_vod_box' | 'runntv'>(() => {
+    const saved = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
+    if (saved === 'emedia_vod' || saved === 'emedia_vod_box' || saved === 'runntv') return saved;
+    return 'emedia_vod';
+  });
   const [globalSafetyShow, setGlobalSafetyShow] = useState<boolean>(true);
-  const [showGuidelines, setShowGuidelines] = useState<boolean>(true);
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [showGuidelines, setShowGuidelines] = useState<boolean>(false);
+  const [isMasterLoaderCollapsed, setIsMasterLoaderCollapsed] = useState<boolean>(false);
+  const { theme, toggleTheme } = useTheme();
+
+  useEffect(() => {
+    localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, activeTab);
+  }, [activeTab]);
 
   // Parent state for all sizing components
   const [images, setImages] = useState<Record<string, string | null>>({});
@@ -1113,28 +1566,202 @@ export default function App() {
 
   const [showLogoOverlays, setShowLogoOverlays] = useState<Record<string, boolean>>({});
   const [isLogoPanelCollapsed, setIsLogoPanelCollapsed] = useState<boolean>(true);
+  const [overlayActiveTab, setOverlayActiveTab] = useState<'logo' | 'badge'>('logo');
+  const [isLogoDragOver, setIsLogoDragOver] = useState<boolean>(false);
+
+  const handleLogoFileUpload = async (file: File) => {
+    try {
+      const { dataUrl, name } = await readImageFile(file);
+      setLogoConfig((prev) => ({
+        ...prev,
+        imageSrc: dataUrl,
+        fileName: name,
+      }));
+    } catch {
+      // Ignore non-image files
+    }
+  };
+
+  const [badgeConfig, setBadgeConfig] = useState<BadgeOverlayConfig>(() => withBadgeDefaults({}));
+  const [savedBadgePresets, setSavedBadgePresets] = useState<SavedBadgePreset[]>(() => loadSavedBadgePresets());
+  const [badgePresetName, setBadgePresetName] = useState('');
+
+  const applyBadgePreset = (config: Partial<BadgeOverlayConfig>) => {
+    setBadgeConfig((prev) => withBadgeDefaults({ ...prev, ...config }));
+  };
+
+  const applyBadgeAnchor = (anchor: keyof typeof BADGE_ANCHOR_LAYOUT) => {
+    const layout = BADGE_ANCHOR_LAYOUT[anchor];
+    setBadgeConfig((prev) => ({
+      ...prev,
+      position: anchor,
+      ...layout,
+    }));
+  };
+
+  const nudgeBadgeLayout = (
+    target: 'banner' | 'text',
+    axis: 'x' | 'y',
+    amount: number
+  ) => {
+    setBadgeConfig((prev) => {
+      const key = target === 'banner'
+        ? (axis === 'x' ? 'bannerXPercent' : 'bannerYPercent')
+        : (axis === 'x' ? 'textXPercent' : 'textYPercent');
+      const nextValue = Math.min(100, Math.max(0, prev[key] + amount));
+      const patch: Partial<BadgeOverlayConfig> = { [key]: nextValue };
+
+      if (target === 'banner' && prev.textLinkedToBanner) {
+        if (axis === 'x') patch.textXPercent = nextValue;
+        if (axis === 'y') patch.textYPercent = nextValue;
+      }
+
+      return { ...prev, ...patch };
+    });
+  };
+
+  const updateBannerLayout = (patch: Partial<BadgeOverlayConfig>) => {
+    setBadgeConfig((prev) => {
+      const next = { ...prev, ...patch };
+      if (prev.textLinkedToBanner) {
+        if (patch.bannerXPercent !== undefined) next.textXPercent = patch.bannerXPercent;
+        if (patch.bannerYPercent !== undefined) next.textYPercent = patch.bannerYPercent;
+      }
+      return next;
+    });
+  };
+
+  const centerTextOnBanner = () => {
+    setBadgeConfig((prev) => ({
+      ...prev,
+      textXPercent: prev.bannerXPercent,
+      textYPercent: prev.bannerYPercent,
+    }));
+  };
+
+  const saveCurrentBadgePreset = () => {
+    const name = badgePresetName.trim();
+    if (!name || badgeConfig.badgeType === 'none') return;
+
+    const preset: SavedBadgePreset = {
+      id: `${Date.now()}`,
+      name,
+      savedAt: Date.now(),
+      config: withBadgeDefaults(badgeConfig),
+    };
+
+    const nextPresets = [preset, ...savedBadgePresets.filter((item) => item.name !== name)].slice(0, 12);
+    setSavedBadgePresets(nextPresets);
+    persistSavedBadgePresets(nextPresets);
+    setBadgePresetName('');
+  };
+
+  const loadSavedBadgePreset = (preset: SavedBadgePreset) => {
+    setBadgeConfig(withBadgeDefaults(preset.config));
+  };
+
+  const deleteSavedBadgePreset = (id: string) => {
+    const nextPresets = savedBadgePresets.filter((preset) => preset.id !== id);
+    setSavedBadgePresets(nextPresets);
+    persistSavedBadgePresets(nextPresets);
+  };
+
+  const [showBadgeOverlays, setShowBadgeOverlays] = useState<Record<string, boolean>>({});
+  const [isBadgePanelCollapsed, setIsBadgePanelCollapsed] = useState<boolean>(true);
+  const [isWorkspaceCollapsed, setIsWorkspaceCollapsed] = useState<boolean>(true);
+  const [focusedSizeId, setFocusedSizeId] = useState<string>('');
+  const [workspacePreviewUrl, setWorkspacePreviewUrl] = useState<string | null>(null);
 
   const masterFileInputRef = useRef<HTMLInputElement>(null);
 
-  const activeSizes = activeTab === 'emedia_vod' 
+  const activeSizes = activeTab === 'emedia_vod'
     ? EMEDIA_VOD_SIZES 
     : activeTab === 'emedia_vod_box' 
       ? EMEDIA_VOD_BOX_SIZES 
       : RUNNTV_SIZES;
 
+  useEffect(() => {
+    const preventBrowserFileDrop = (e: Event) => e.preventDefault();
+    window.addEventListener('dragover', preventBrowserFileDrop);
+    window.addEventListener('drop', preventBrowserFileDrop);
+    return () => {
+      window.removeEventListener('dragover', preventBrowserFileDrop);
+      window.removeEventListener('drop', preventBrowserFileDrop);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (activeSizes.length > 0) {
+      setFocusedSizeId(activeSizes[0].id);
+    }
+  }, [activeTab]);
+
+  const focusedSize = activeSizes.find((s) => s.id === focusedSizeId) || activeSizes[0];
+
+  useEffect(() => {
+    let currentUrl: string | null = null;
+    if (focusedSize && images[focusedSize.id] && croppedAreas[focusedSize.id]) {
+      const img = images[focusedSize.id]!;
+      const cropArea = croppedAreas[focusedSize.id];
+      const qual = qualities[focusedSize.id] !== undefined ? qualities[focusedSize.id] : (focusedSize.defaultQuality ?? 0.8);
+      const fmt = getExportFormat(focusedSize, exportFormats);
+      const showText = showTextOverlays[focusedSize.id] !== undefined ? showTextOverlays[focusedSize.id] : (focusedSize.id !== 'runntv_logo');
+      const showLogo = showLogoOverlays[focusedSize.id] !== undefined ? showLogoOverlays[focusedSize.id] : (focusedSize.id !== 'runntv_logo');
+      const showBadge = showBadgeOverlays[focusedSize.id] !== undefined ? showBadgeOverlays[focusedSize.id] : (focusedSize.id !== 'runntv_logo');
+
+      getCroppedImg(
+        img,
+        cropArea,
+        qual,
+        focusedSize,
+        fmt,
+        textConfig,
+        showText,
+        logoConfig,
+        showLogo,
+        badgeConfig,
+        showBadge
+      ).then((blob) => {
+        if (blob) {
+          currentUrl = URL.createObjectURL(blob);
+          setWorkspacePreviewUrl(currentUrl);
+        }
+      });
+    } else {
+      setWorkspacePreviewUrl(null);
+    }
+
+    return () => {
+      if (currentUrl) URL.revokeObjectURL(currentUrl);
+    };
+  }, [
+    focusedSizeId,
+    images[focusedSizeId],
+    crops[focusedSizeId],
+    zooms[focusedSizeId],
+    croppedAreas[focusedSizeId],
+    qualities[focusedSizeId],
+    exportFormats[focusedSizeId],
+    textConfig,
+    showTextOverlays[focusedSizeId],
+    logoConfig,
+    showLogoOverlays[focusedSizeId],
+    badgeConfig,
+    showBadgeOverlays[focusedSizeId],
+  ]);
+
   // Handle master upload to apply to all cards in the current tab
-  const handleMasterUpload = (file: File) => {
-    const reader = new FileReader();
-    reader.addEventListener('load', () => {
-      const result = reader.result as string;
+  const handleMasterUpload = async (file: File) => {
+    try {
+      const { dataUrl, name } = await readImageFile(file);
       const newImages = { ...images };
       const newNames = { ...imageNames };
       const newCrops = { ...crops };
       const newZooms = { ...zooms };
-      
+
       activeSizes.forEach((size) => {
-        newImages[size.id] = result;
-        newNames[size.id] = file.name;
+        newImages[size.id] = dataUrl;
+        newNames[size.id] = name;
         newCrops[size.id] = { x: 0, y: 0 };
         newZooms[size.id] = 1;
       });
@@ -1143,9 +1770,10 @@ export default function App() {
       setImageNames(newNames);
       setCrops(newCrops);
       setZooms(newZooms);
-      setFilenamePrefix(file.name.replace(/\.[^/.]+$/, ''));
-    });
-    reader.readAsDataURL(file);
+      setFilenamePrefix(name.replace(/\.[^/.]+$/, ''));
+    } catch {
+      // Ignore non-image files
+    }
   };
 
   // Clear all images in active tab
@@ -1196,13 +1824,26 @@ export default function App() {
     for (const size of activeSizes) {
       const img = images[size.id];
       const cropArea = croppedAreas[size.id];
-      const qual = qualities[size.id] !== undefined ? qualities[size.id] : 0.8;
-      const fmt = exportFormats[size.id] || size.format;
+      const qual = qualities[size.id] !== undefined ? qualities[size.id] : (size.defaultQuality ?? 0.8);
+      const fmt = getExportFormat(size, exportFormats);
       const localShowOverlay = showTextOverlays[size.id] !== undefined ? showTextOverlays[size.id] : (size.id !== 'runntv_logo');
       const localShowLogoOverlay = showLogoOverlays[size.id] !== undefined ? showLogoOverlays[size.id] : (size.id !== 'runntv_logo');
+      const localShowBadgeOverlay = showBadgeOverlays[size.id] !== undefined ? showBadgeOverlays[size.id] : (size.id !== 'runntv_logo');
       
       if (img && cropArea) {
-        const blob = await getCroppedImg(img, cropArea, qual, size, fmt, textConfig, localShowOverlay, logoConfig, localShowLogoOverlay);
+        const blob = await getCroppedImg(
+          img, 
+          cropArea, 
+          qual, 
+          size, 
+          fmt, 
+          textConfig, 
+          localShowOverlay, 
+          logoConfig, 
+          localShowLogoOverlay,
+          badgeConfig,
+          localShowBadgeOverlay
+        );
         if (blob) {
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
@@ -1232,13 +1873,26 @@ export default function App() {
       for (const size of activeSizes) {
         const img = images[size.id];
         const cropArea = croppedAreas[size.id];
-        const qual = qualities[size.id] !== undefined ? qualities[size.id] : 0.8;
-        const fmt = exportFormats[size.id] || size.format;
+        const qual = qualities[size.id] !== undefined ? qualities[size.id] : (size.defaultQuality ?? 0.8);
+        const fmt = getExportFormat(size, exportFormats);
         const localShowOverlay = showTextOverlays[size.id] !== undefined ? showTextOverlays[size.id] : (size.id !== 'runntv_logo');
         const localShowLogoOverlay = showLogoOverlays[size.id] !== undefined ? showLogoOverlays[size.id] : (size.id !== 'runntv_logo');
+        const localShowBadgeOverlay = showBadgeOverlays[size.id] !== undefined ? showBadgeOverlays[size.id] : (size.id !== 'runntv_logo');
         
         if (img && cropArea) {
-          const blob = await getCroppedImg(img, cropArea, qual, size, fmt, textConfig, localShowOverlay, logoConfig, localShowLogoOverlay);
+          const blob = await getCroppedImg(
+            img, 
+            cropArea, 
+            qual, 
+            size, 
+            fmt, 
+            textConfig, 
+            localShowOverlay, 
+            logoConfig, 
+            localShowLogoOverlay,
+            badgeConfig,
+            localShowBadgeOverlay
+          );
           if (blob) {
             const ext = fmt === 'png' ? 'png' : 'jpg';
             const baseName = filenamePrefix && filenamePrefix.trim() ? filenamePrefix.trim() : 'image';
@@ -1274,7 +1928,7 @@ export default function App() {
     <div className={`min-h-screen transition-colors duration-300 p-4 md:p-8 font-sans antialiased selection:bg-indigo-600 selection:text-white ${
       theme === 'dark' ? 'bg-zinc-950 text-zinc-100' : 'bg-zinc-50 text-zinc-900'
     }`}>
-      <div className="max-w-7xl mx-auto flex flex-col gap-6">
+      <div className="max-w-7xl mx-auto flex flex-col gap-3">
         
         {/* Header */}
         <header className={`flex flex-col md:flex-row justify-between items-center gap-4 border-b pb-6 ${
@@ -1339,12 +1993,11 @@ export default function App() {
               </button>
             </div>
 
-            {/* Theme Switcher Button */}
             <button
-              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              onClick={toggleTheme}
               className={`p-2.5 rounded-xl border transition cursor-pointer ${
-                theme === 'dark' 
-                  ? 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200' 
+                theme === 'dark'
+                  ? 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200'
                   : 'bg-white border-zinc-300 text-zinc-600 hover:text-zinc-950 shadow-sm'
               }`}
               title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
@@ -1354,28 +2007,33 @@ export default function App() {
           </div>
         </header>
 
-        {/* Guidelines and Master Artwork Loader */}
-        <div className="grid lg:grid-cols-12 gap-6 items-stretch">
+        {/* Guidelines and Master Artwork Loader — compact until expanded */}
+        <div className={`grid lg:grid-cols-2 ${showGuidelines || !isMasterLoaderCollapsed ? 'gap-3' : 'gap-2'}`}>
           {/* Guidelines Box */}
-          <div className="lg:col-span-6 flex flex-col">
-            <div className={`border rounded-2xl p-5 shadow-lg flex flex-col h-full ${
-              theme === 'dark' ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200/90 shadow-zinc-200/30'
-            }`}>
-              <div className="flex justify-between items-center mb-3">
-                <div className="flex items-center gap-2">
-                  <Info className={`w-4 h-4 shrink-0 ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`} />
-                  <h2 className={`text-sm font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}`}>
+          <div className="flex flex-col min-w-0">
+            <div
+              className={`border transition-all duration-200 flex flex-col ${
+                showGuidelines ? 'rounded-2xl p-4 shadow-lg' : 'rounded-xl p-2 px-3 shadow-sm'
+              } ${theme === 'dark' ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200/90 shadow-zinc-200/30'}`}
+            >
+              <div
+                className={`flex justify-between items-center cursor-pointer select-none ${showGuidelines ? 'mb-3' : ''}`}
+                onClick={() => setShowGuidelines(!showGuidelines)}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <Info className={`shrink-0 ${showGuidelines ? 'w-4 h-4' : 'w-3.5 h-3.5'} ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`} />
+                  <h2 className={`font-bold uppercase tracking-wider truncate ${showGuidelines ? 'text-sm' : 'text-[11px]'} ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}`}>
                     {activeTab === 'emedia_vod' ? 'eMedia VOD Specs' : activeTab === 'emedia_vod_box' ? 'eMedia VOD Box Guidelines' : 'runnTV Specifications'}
                   </h2>
                 </div>
-                <button 
-                  onClick={() => setShowGuidelines(!showGuidelines)} 
-                  className={`text-xs font-semibold flex items-center gap-0.5 cursor-pointer ${
-                    theme === 'dark' ? 'text-zinc-500 hover:text-zinc-300' : 'text-zinc-550 hover:text-zinc-850'
-                  }`}
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowGuidelines(!showGuidelines); }}
+                  className={`shrink-0 font-semibold flex items-center gap-0.5 cursor-pointer ${
+                    showGuidelines ? 'text-xs' : 'text-[10px]'
+                  } ${theme === 'dark' ? 'text-zinc-500 hover:text-zinc-300' : 'text-zinc-550 hover:text-zinc-850'}`}
                 >
                   {showGuidelines ? 'Hide' : 'Show'}
-                  <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showGuidelines ? 'rotate-180' : ''}`} />
+                  <ChevronDown className={`transition-transform duration-200 ${showGuidelines ? 'w-3.5 h-3.5 rotate-180' : 'w-3 h-3'}`} />
                 </button>
               </div>
 
@@ -1425,7 +2083,7 @@ export default function App() {
                       </li>
                       <li className="flex items-start gap-2">
                         <span className={`font-bold shrink-0 ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`}>●</span>
-                        <span><strong>Strict Size Limit:</strong> Images must not exceed <strong>1 MB</strong>. Shared in lossless <strong>PNG format</strong>.</span>
+                        <span><strong>Strict Size Limit:</strong> Images must not exceed <strong>1 MB</strong>. All exports use <strong>PNG format</strong> with smart palette compression to stay under the limit.</span>
                       </li>
                     </ul>
                   )}
@@ -1445,76 +2103,100 @@ export default function App() {
           </div>
 
           {/* Master Upload Area */}
-          <div className="lg:col-span-6 flex flex-col">
-            <div className={`border rounded-2xl p-5 shadow-lg flex flex-col h-full justify-between gap-3 ${
-              theme === 'dark' ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200/90 shadow-zinc-200/30'
-            }`}>
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-                  <h2 className={`text-sm font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}`}>
+          <div className="flex flex-col min-w-0">
+            <div
+              className={`border transition-all duration-200 flex flex-col ${
+                isMasterLoaderCollapsed ? 'rounded-xl p-2 px-3 shadow-sm' : 'rounded-2xl p-4 shadow-lg gap-3'
+              } ${theme === 'dark' ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200/90 shadow-zinc-200/30'}`}
+            >
+              <div
+                className={`flex items-center justify-between cursor-pointer select-none ${!isMasterLoaderCollapsed ? 'mb-1' : ''}`}
+                onClick={() => setIsMasterLoaderCollapsed(!isMasterLoaderCollapsed)}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <Sparkles className={`text-amber-400 shrink-0 ${isMasterLoaderCollapsed ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} />
+                  <h2 className={`font-bold uppercase tracking-wider truncate ${isMasterLoaderCollapsed ? 'text-[11px]' : 'text-sm'} ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}`}>
                     Master Artwork Loader
                   </h2>
-                </div>
-                <p className={`text-[11px] ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-500'}`}>
-                  Load a single high-resolution source image to automatically populate all sizing panels below.
-                </p>
-              </div>
-
-              <div className="flex flex-col sm:flex-row items-center gap-3.5">
-                <div 
-                  className={`flex-grow w-full border border-dashed rounded-xl py-3 px-4 flex items-center justify-center gap-2.5 cursor-pointer transition ${
-                    theme === 'dark' 
-                      ? 'border-zinc-700 hover:border-zinc-500 bg-zinc-950/40 hover:bg-zinc-900/40 text-zinc-300' 
-                      : 'border-zinc-300 hover:border-zinc-450 bg-zinc-50/50 hover:bg-zinc-100/30 text-zinc-700'
-                  }`}
-                  onClick={() => masterFileInputRef.current?.click()}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    if (e.dataTransfer.files[0]) {
-                      handleMasterUpload(e.dataTransfer.files[0]);
-                    }
-                  }}
-                >
-                  <Upload className={`w-4 h-4 ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`} />
-                  <span className="text-xs font-semibold">Drop or choose Master Image</span>
-                  <input 
-                    type="file" 
-                    ref={masterFileInputRef} 
-                    onChange={(e) => {
-                      if (e.target.files?.[0]) {
-                        handleMasterUpload(e.target.files[0]);
-                      }
-                    }} 
-                    accept="image/*" 
-                    className="hidden" 
-                  />
-                </div>
-
-                {/* Bulk Actions */}
-                <div className="flex gap-2 w-full sm:w-auto shrink-0 justify-end">
-                  {loadedCount > 0 && (
-                    <button 
-                      onClick={clearActiveImages}
-                      className={`px-3.5 py-2.5 border text-xs font-bold transition flex items-center gap-1.5 cursor-pointer w-full sm:w-auto justify-center rounded-xl ${
-                        theme === 'dark' 
-                          ? 'bg-zinc-950 border-zinc-800 text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/20' 
-                          : 'bg-zinc-50 border-zinc-200 text-rose-600 hover:bg-rose-50 hover:border-rose-200 shadow-sm'
-                      }`}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" /> Clear All
-                    </button>
+                  {loadedCount > 0 && isMasterLoaderCollapsed && (
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                      theme === 'dark' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-600/10 text-emerald-700'
+                    }`}>
+                      {loadedCount} loaded
+                    </span>
                   )}
                 </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setIsMasterLoaderCollapsed(!isMasterLoaderCollapsed); }}
+                  className={`p-1 rounded-lg border transition hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer shrink-0 ${
+                    theme === 'dark' ? 'border-zinc-800 text-zinc-400' : 'border-zinc-200 text-zinc-500'
+                  }`}
+                >
+                  {isMasterLoaderCollapsed ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
+                </button>
               </div>
+
+              {!isMasterLoaderCollapsed && (
+                <>
+                  <p className={`text-[11px] ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-500'}`}>
+                    Load a single high-resolution source image to automatically populate all sizing panels below.
+                  </p>
+
+                  <div className="flex flex-col sm:flex-row items-center gap-3">
+                    <div 
+                      className={`flex-grow w-full border border-dashed rounded-xl py-3 px-4 flex items-center justify-center gap-2.5 cursor-pointer transition ${
+                        theme === 'dark' 
+                          ? 'border-zinc-700 hover:border-zinc-500 bg-zinc-950/40 hover:bg-zinc-900/40 text-zinc-300' 
+                          : 'border-zinc-300 hover:border-zinc-450 bg-zinc-50/50 hover:bg-zinc-100/30 text-zinc-700'
+                      }`}
+                      onClick={() => masterFileInputRef.current?.click()}
+                      onDragEnter={preventDragDefaults}
+                      onDragOver={(e) => { preventDragDefaults(e); e.dataTransfer.dropEffect = 'copy'; }}
+                      onDrop={(e) => {
+                        preventDragDefaults(e);
+                        const file = getDroppedImageFile(e);
+                        if (file) void handleMasterUpload(file);
+                      }}
+                    >
+                      <Upload className={`w-4 h-4 ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`} />
+                      <span className="text-xs font-semibold">Drop or choose Master Image</span>
+                      <input 
+                        type="file" 
+                        ref={masterFileInputRef} 
+                        onChange={(e) => {
+                          if (e.target.files?.[0]) {
+                            handleMasterUpload(e.target.files[0]);
+                          }
+                        }} 
+                        accept="image/*" 
+                        className="hidden" 
+                      />
+                    </div>
+
+                    {loadedCount > 0 && (
+                      <button 
+                        onClick={clearActiveImages}
+                        className={`px-3 py-2 border text-xs font-bold transition flex items-center gap-1.5 cursor-pointer w-full sm:w-auto justify-center rounded-xl shrink-0 ${
+                          theme === 'dark' 
+                            ? 'bg-zinc-950 border-zinc-800 text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/20' 
+                            : 'bg-zinc-50 border-zinc-200 text-rose-600 hover:bg-rose-50 hover:border-rose-200 shadow-sm'
+                        }`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" /> Clear All
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
 
+        {/* Optional overlay tools — side-by-side when minimized */}
+        <div className={`grid gap-2 ${isTitlePanelCollapsed && isLogoPanelCollapsed ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
         {/* Title Overlay Customizer */}
-        <div className={`border rounded-2xl shadow-lg mb-8 transition-all duration-300 ${
-          isTitlePanelCollapsed ? 'p-4' : 'p-6'
+        <div className={`border transition-all duration-200 ${
+          isTitlePanelCollapsed ? 'p-2 px-3 rounded-xl shadow-sm' : 'p-5 rounded-2xl shadow-lg'
         } ${
           theme === 'dark' ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200/90 shadow-zinc-200/30'
         }`}>
@@ -1524,43 +2206,41 @@ export default function App() {
               isTitlePanelCollapsed ? '' : 'mb-4 border-b pb-3 border-zinc-200 dark:border-zinc-800'
             }`}
           >
-            <div className="flex items-center gap-2.5">
-              <Sparkles className="w-4 h-4 text-indigo-500 shrink-0" />
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className={`text-sm font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-200' : 'text-zinc-850'}`}>
-                    Creative Title Overlay
+            <div className="flex items-center gap-2 min-w-0">
+              <Sparkles className={`text-indigo-500 shrink-0 ${isTitlePanelCollapsed ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} />
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <h2 className={`font-bold uppercase tracking-wider truncate ${isTitlePanelCollapsed ? 'text-[11px]' : 'text-sm'} ${theme === 'dark' ? 'text-zinc-200' : 'text-zinc-850'}`}>
+                    Title Overlay
                   </h2>
-                  <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase ${
-                    isTitlePanelCollapsed
-                      ? (theme === 'dark' ? 'bg-zinc-850 text-zinc-400' : 'bg-zinc-100 text-zinc-500')
-                      : 'bg-indigo-500/10 text-indigo-500'
-                  }`}>
-                    {isTitlePanelCollapsed ? 'Minimized' : 'Active'}
-                  </span>
+                  {textConfig.text.trim() && isTitlePanelCollapsed && (
+                    <span className="text-[9px] font-bold text-indigo-500 truncate max-w-[80px]">{textConfig.text.split('\n')[0]}</span>
+                  )}
                 </div>
-                <p className={`text-[10px] ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-450'}`}>
-                  Design high-quality creative movie & series-style text overlays printed directly onto resized canvases.
-                </p>
+                {!isTitlePanelCollapsed && (
+                  <p className={`text-[10px] ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-450'}`}>
+                    Movie & series-style text overlays on your exports.
+                  </p>
+                )}
               </div>
             </div>
             
-            <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
-              {textConfig.text.trim() && (
+            <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+              {textConfig.text.trim() && !isTitlePanelCollapsed && (
                 <button
                   onClick={() => setTextConfig(prev => ({ ...prev, text: '' }))}
-                  className="text-[10px] font-bold text-rose-500 bg-rose-500/10 hover:bg-rose-500/20 px-2.5 py-1 rounded-lg border border-rose-500/25 transition cursor-pointer"
+                  className="text-[10px] font-bold text-rose-500 bg-rose-500/10 hover:bg-rose-500/20 px-2 py-0.5 rounded-lg border border-rose-500/25 transition cursor-pointer"
                 >
-                  Clear Title
+                  Clear
                 </button>
               )}
               <button 
                 onClick={() => setIsTitlePanelCollapsed(!isTitlePanelCollapsed)}
-                className={`p-1.5 rounded-lg border transition hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer ${
+                className={`p-1 rounded-lg border transition hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer ${
                   theme === 'dark' ? 'border-zinc-800 text-zinc-400' : 'border-zinc-200 text-zinc-500'
                 }`}
               >
-                {isTitlePanelCollapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+                {isTitlePanelCollapsed ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
               </button>
             </div>
           </div>
@@ -1832,8 +2512,8 @@ export default function App() {
         </div>
 
         {/* Logo & Badge Overlay Customizer */}
-        <div className={`border rounded-2xl shadow-lg mb-8 transition-all duration-300 ${
-          isLogoPanelCollapsed ? 'p-4' : 'p-6'
+        <div className={`border transition-all duration-200 ${
+          isLogoPanelCollapsed ? 'p-2 px-3 rounded-xl shadow-sm' : 'p-5 rounded-2xl shadow-lg'
         } ${
           theme === 'dark' ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200/90 shadow-zinc-200/30'
         }`}>
@@ -1843,280 +2523,740 @@ export default function App() {
               isLogoPanelCollapsed ? '' : 'mb-4 border-b pb-3 border-zinc-200 dark:border-zinc-800'
             }`}
           >
-            <div className="flex items-center gap-2.5">
-              <ImageIcon className="w-4 h-4 text-violet-500 shrink-0" />
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className={`text-sm font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-200' : 'text-zinc-850'}`}>
-                    Logo & Badge Overlay
+            <div className="flex items-center gap-2 min-w-0">
+              <ImageIcon className={`text-violet-500 shrink-0 ${isLogoPanelCollapsed ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} />
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <h2 className={`font-bold uppercase tracking-wider truncate ${isLogoPanelCollapsed ? 'text-[11px]' : 'text-sm'} ${theme === 'dark' ? 'text-zinc-200' : 'text-zinc-850'}`}>
+                    Logo & Badge
                   </h2>
-                  <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase ${
-                    isLogoPanelCollapsed
-                      ? (theme === 'dark' ? 'bg-zinc-855 text-zinc-400' : 'bg-zinc-100 text-zinc-500')
-                      : 'bg-indigo-500/10 text-indigo-500'
-                  }`}>
-                    {isLogoPanelCollapsed ? 'Minimized' : 'Active'}
-                  </span>
+                  {(logoConfig.imageSrc || badgeConfig.text.trim()) && isLogoPanelCollapsed && (
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                      theme === 'dark' ? 'bg-violet-500/10 text-violet-400' : 'bg-violet-600/10 text-violet-700'
+                    }`}>
+                      Active
+                    </span>
+                  )}
                 </div>
-                <p className={`text-[10px] ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-450'}`}>
-                  Import transparent PNG brand logos, status tags, or promotional badges to print on your resized images.
-                </p>
+                {!isLogoPanelCollapsed && (
+                  <p className={`text-[10px] ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-450'}`}>
+                    Brand logos and promotional badges on your exports.
+                  </p>
+                )}
               </div>
             </div>
             
-            <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
-              {logoConfig.imageSrc && (
+            <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+              {logoConfig.imageSrc && !isLogoPanelCollapsed && (
                 <button
                   onClick={() => setLogoConfig(prev => ({ ...prev, imageSrc: null, fileName: null }))}
-                  className="text-[10px] font-bold text-rose-500 bg-rose-500/10 hover:bg-rose-500/20 px-2.5 py-1 rounded-lg border border-rose-500/25 transition cursor-pointer"
+                  className="text-[10px] font-bold text-rose-500 bg-rose-500/10 hover:bg-rose-500/20 px-2 py-0.5 rounded-lg border border-rose-500/25 transition cursor-pointer"
                 >
-                  Remove Asset
+                  Remove
                 </button>
               )}
               <button 
                 onClick={() => setIsLogoPanelCollapsed(!isLogoPanelCollapsed)}
-                className={`p-1.5 rounded-lg border transition hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer ${
+                className={`p-1 rounded-lg border transition hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer ${
                   theme === 'dark' ? 'border-zinc-800 text-zinc-400' : 'border-zinc-200 text-zinc-500'
                 }`}
               >
-                {isLogoPanelCollapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+                {isLogoPanelCollapsed ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
               </button>
             </div>
           </div>
 
           {!isLogoPanelCollapsed && (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-2">
-              {/* Column 1: Upload Dropzone */}
-              <div className="lg:col-span-5 flex flex-col gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                    Upload Watermark / Badge (PNG recommended)
-                  </span>
-                  
-                  {logoConfig.imageSrc ? (
-                    <div className={`flex items-center gap-3 p-3.5 border rounded-xl ${
-                      theme === 'dark' ? 'bg-zinc-950 border-zinc-800' : 'bg-zinc-50 border-zinc-200'
-                    }`}>
-                      <div className="w-12 h-12 rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-150 dark:bg-zinc-950 flex items-center justify-center overflow-hidden shrink-0">
-                        <img src={logoConfig.imageSrc} alt="Preview Logo" className="max-w-full max-h-full object-contain" />
-                      </div>
-                      <div className="flex-grow min-w-0">
-                        <p className="text-xs font-semibold truncate">{logoConfig.fileName || 'Uploaded Asset'}</p>
-                        <p className="text-[10px] opacity-60">Ready to overlay on active images.</p>
-                      </div>
-                      <label className="text-[10px] font-bold text-indigo-500 hover:text-indigo-400 bg-indigo-500/10 px-2.5 py-1 rounded cursor-pointer border border-indigo-500/20 shrink-0">
-                        Replace
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              const reader = new FileReader();
-                              reader.onload = (event) => {
-                                setLogoConfig(prev => ({
-                                  ...prev,
-                                  imageSrc: event.target?.result as string,
-                                  fileName: file.name
-                                }));
-                              };
-                              reader.readAsDataURL(file);
-                            }
-                          }}
-                        />
-                      </label>
-                    </div>
-                  ) : (
-                    <label className={`flex flex-col items-center justify-center gap-2 p-6 border-2 border-dashed rounded-xl cursor-pointer hover:border-indigo-500 transition ${
-                      theme === 'dark' ? 'bg-zinc-950 border-zinc-800 hover:bg-zinc-900/40' : 'bg-zinc-50 border-zinc-200 hover:bg-indigo-50/20'
-                    }`}>
-                      <Upload className="w-6 h-6 text-zinc-400" />
-                      <div className="text-center">
-                        <p className="text-xs font-bold">Click or drag brand logo/badge here</p>
-                        <p className="text-[9px] opacity-60 mt-0.5">Supports PNG, SVG, JPG (transparency preferred)</p>
-                      </div>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onload = (event) => {
-                              setLogoConfig(prev => ({
-                                ...prev,
-                                imageSrc: event.target?.result as string,
-                                fileName: file.name
-                              }));
-                            };
-                            reader.readAsDataURL(file);
-                          }
-                        }}
-                      />
-                    </label>
+            <div className="flex flex-col gap-5 pt-2">
+              {/* Overlay Customizer Tabs */}
+              <div className="flex border-b border-zinc-200 dark:border-zinc-800 pb-2 gap-4">
+                <button
+                  onClick={() => setOverlayActiveTab('logo')}
+                  className={`pb-1 px-1 text-xs font-bold transition-all relative cursor-pointer ${
+                    overlayActiveTab === 'logo'
+                      ? 'text-indigo-500'
+                      : (theme === 'dark' ? 'text-zinc-500 hover:text-zinc-300' : 'text-zinc-500 hover:text-zinc-805')
+                  }`}
+                >
+                  <span>Brand Logo Watermark</span>
+                  {overlayActiveTab === 'logo' && (
+                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 rounded-full" />
                   )}
-                </div>
-
-                {logoConfig.imageSrc && (
-                  <div className="flex flex-col gap-2">
-                    <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                      Sample Quick Presets
-                    </span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {[
-                        { label: '↖️ Top Left', config: { position: 'top-left', scalePercent: 15, opacity: 0.8, paddingPercent: 4 } },
-                        { label: '↗️ Top Right', config: { position: 'top-right', scalePercent: 15, opacity: 0.8, paddingPercent: 4 } },
-                        { label: '↙️ Bottom Left', config: { position: 'bottom-left', scalePercent: 20, opacity: 1.0, paddingPercent: 0 } },
-                        { label: '↘️ Bottom Right', config: { position: 'bottom-right', scalePercent: 20, opacity: 1.0, paddingPercent: 0 } },
-                        { label: '⏺️ Center', config: { position: 'center', scalePercent: 35, opacity: 0.9, paddingPercent: 5 } },
-                      ].map((preset, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => setLogoConfig(prev => ({ ...prev, ...preset.config } as any))}
-                          className={`px-2 py-1 text-[10px] border rounded-lg font-semibold transition cursor-pointer ${
-                            theme === 'dark'
-                              ? 'bg-zinc-950 border-zinc-800 hover:border-zinc-700 text-zinc-355 hover:text-white'
-                              : 'bg-zinc-50/60 border-zinc-200 hover:border-zinc-300 text-zinc-650 hover:text-zinc-950'
-                          }`}
-                        >
-                          {preset.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                </button>
+                <button
+                  onClick={() => setOverlayActiveTab('badge')}
+                  className={`pb-1 px-1 text-xs font-bold transition-all relative cursor-pointer ${
+                    overlayActiveTab === 'badge'
+                      ? 'text-indigo-500'
+                      : (theme === 'dark' ? 'text-zinc-500 hover:text-zinc-300' : 'text-zinc-500 hover:text-zinc-805')
+                  }`}
+                >
+                  <span>Promo Badge & Banner</span>
+                  {overlayActiveTab === 'badge' && (
+                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 rounded-full" />
+                  )}
+                </button>
               </div>
 
-              {/* Column 2: Advanced Sizing & Placement sliders */}
-              <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-6 border-t lg:border-t-0 lg:border-l pt-6 lg:pt-0 lg:pl-6 border-zinc-200 dark:border-zinc-800">
-                <div className="flex flex-col gap-3.5">
-                  <div className="flex flex-col gap-1">
-                    <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                      Placement Position
-                    </span>
-                    <div className="grid grid-cols-3 gap-1.5 mt-1">
-                      {[
-                        { id: 'top-left', label: '↖️ Top Left' },
-                        { id: 'center', label: '⏺️ Center' },
-                        { id: 'top-right', label: '↗️ Top Right' },
-                        { id: 'bottom-left', label: '↙️ Bottom Left' },
-                        { id: 'custom', label: '⚙️ Custom' },
-                        { id: 'bottom-right', label: '↘️ Bottom Right' },
-                      ].map((pos) => (
-                        <button
-                          key={pos.id}
-                          onClick={() => setLogoConfig(prev => ({ ...prev, position: pos.id as any }))}
-                          className={`py-1.5 px-1 text-[10px] font-bold rounded-lg border text-center transition cursor-pointer ${
-                            logoConfig.position === pos.id
-                              ? 'bg-indigo-500 border-indigo-500 text-white'
-                              : (theme === 'dark'
-                                  ? 'bg-zinc-950 border-zinc-850 hover:border-zinc-700 text-zinc-350'
-                                  : 'bg-zinc-50 border-zinc-200 hover:border-zinc-300 text-zinc-700')
+              {overlayActiveTab === 'logo' ? (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  {/* Column 1: Upload Dropzone */}
+                  <div className="lg:col-span-5 flex flex-col gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                        Upload Watermark / Badge (PNG recommended)
+                      </span>
+                      
+                      {logoConfig.imageSrc ? (
+                        <div className={`flex items-center gap-3 p-3.5 border rounded-xl ${
+                          theme === 'dark' ? 'bg-zinc-950 border-zinc-800' : 'bg-zinc-50 border-zinc-200'
+                        }`}>
+                          <div className="w-12 h-12 rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-150 dark:bg-zinc-950 flex items-center justify-center overflow-hidden shrink-0">
+                            <img src={logoConfig.imageSrc} alt="Preview Logo" className="max-w-full max-h-full object-contain" />
+                          </div>
+                          <div className="flex-grow min-w-0">
+                            <p className="text-xs font-semibold truncate">{logoConfig.fileName || 'Uploaded Asset'}</p>
+                            <p className="text-[10px] opacity-60">Ready to overlay on active images.</p>
+                          </div>
+                          <label className="text-[10px] font-bold text-indigo-500 hover:text-indigo-400 bg-indigo-500/10 px-2.5 py-1 rounded cursor-pointer border border-indigo-500/20 shrink-0">
+                            Replace
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  void handleLogoFileUpload(file);
+                                  e.target.value = '';
+                                }
+                              }}
+                            />
+                          </label>
+                        </div>
+                      ) : (
+                        <div
+                          className={`flex flex-col items-center justify-center gap-2 p-6 border-2 border-dashed rounded-xl cursor-pointer transition ${
+                            isLogoDragOver
+                              ? (theme === 'dark' ? 'border-indigo-400 bg-indigo-500/10' : 'border-indigo-500 bg-indigo-50')
+                              : (theme === 'dark' ? 'bg-zinc-950 border-zinc-800 hover:bg-zinc-900/40' : 'bg-zinc-50 border-zinc-200 hover:bg-indigo-50/20')
                           }`}
+                          onClick={() => document.getElementById('logo-file-input')?.click()}
+                          onDragEnter={preventDragDefaults}
+                          onDragOver={(e) => { preventDragDefaults(e); e.dataTransfer.dropEffect = 'copy'; setIsLogoDragOver(true); }}
+                          onDragLeave={(e) => { preventDragDefaults(e); if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsLogoDragOver(false); }}
+                          onDrop={(e) => {
+                            preventDragDefaults(e);
+                            setIsLogoDragOver(false);
+                            const file = getDroppedImageFile(e);
+                            if (file) void handleLogoFileUpload(file);
+                          }}
                         >
-                          {pos.label}
-                        </button>
-                      ))}
+                          <Upload className="w-6 h-6 text-zinc-400" />
+                          <div className="text-center">
+                            <p className="text-xs font-bold">{isLogoDragOver ? 'Release to upload logo' : 'Click or drag brand logo/badge here'}</p>
+                            <p className="text-[9px] opacity-60 mt-0.5">Supports PNG, SVG, JPG (transparency preferred)</p>
+                          </div>
+                          <input
+                            id="logo-file-input"
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                void handleLogoFileUpload(file);
+                                e.target.value = '';
+                              }
+                            }}
+                          />
+                        </div>
+                      )}
                     </div>
+
+                    {logoConfig.imageSrc && (
+                      <div className="flex flex-col gap-2">
+                        <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                          Sample Quick Presets
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {[
+                            { label: '↖️ Top Left', config: { position: 'top-left', scalePercent: 15, opacity: 0.8, paddingPercent: 4 } },
+                            { label: '↗️ Top Right', config: { position: 'top-right', scalePercent: 15, opacity: 0.8, paddingPercent: 4 } },
+                            { label: '↙️ Bottom Left', config: { position: 'bottom-left', scalePercent: 20, opacity: 1.0, paddingPercent: 0 } },
+                            { label: '↘️ Bottom Right', config: { position: 'bottom-right', scalePercent: 20, opacity: 1.0, paddingPercent: 0 } },
+                            { label: '⏺️ Center', config: { position: 'center', scalePercent: 35, opacity: 0.9, paddingPercent: 5 } },
+                          ].map((preset, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => setLogoConfig(prev => ({ ...prev, ...preset.config } as any))}
+                              className={`px-2 py-1 text-[10px] border rounded-lg font-semibold transition cursor-pointer ${
+                                theme === 'dark'
+                                  ? 'bg-zinc-950 border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-white'
+                                  : 'bg-zinc-50/60 border-zinc-200 hover:border-zinc-300 text-zinc-600 hover:text-zinc-950'
+                              }`}
+                            >
+                              {preset.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
-                  {logoConfig.position !== 'custom' && (
-                    <div className="flex flex-col gap-1">
+                  {/* Column 2: Advanced Sizing & Placement sliders */}
+                  <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-6 border-t lg:border-t-0 lg:border-l pt-6 lg:pt-0 lg:pl-6 border-zinc-200 dark:border-zinc-800">
+                    <div className="flex flex-col gap-3.5">
+                      <div className="flex flex-col gap-1">
+                        <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                          Placement Position
+                        </span>
+                        <div className="grid grid-cols-3 gap-1.5 mt-1">
+                          {[
+                            { id: 'top-left', label: '↖️ Top Left' },
+                            { id: 'center', label: '⏺️ Center' },
+                            { id: 'top-right', label: '↗️ Top Right' },
+                            { id: 'bottom-left', label: '↙️ Bottom Left' },
+                            { id: 'custom', label: '⚙️ Custom' },
+                            { id: 'bottom-right', label: '↘️ Bottom Right' },
+                          ].map((pos) => (
+                            <button
+                              key={pos.id}
+                              onClick={() => setLogoConfig(prev => ({ ...prev, position: pos.id as any }))}
+                              className={`py-1.5 px-1 text-[10px] font-bold rounded-lg border text-center transition cursor-pointer ${
+                                logoConfig.position === pos.id
+                                  ? 'bg-indigo-500 border-indigo-500 text-white'
+                                  : (theme === 'dark'
+                                      ? 'bg-zinc-950 border-zinc-850 hover:border-zinc-700 text-zinc-350'
+                                      : 'bg-zinc-50 border-zinc-200 hover:border-zinc-300 text-zinc-700')
+                              }`}
+                            >
+                              {pos.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {logoConfig.position !== 'custom' && (
+                        <div className="flex flex-col gap-1">
+                          <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                            Border Margin ({logoConfig.paddingPercent}%)
+                          </span>
+                          <input
+                            type="range"
+                            min={0}
+                            max={15}
+                            step={1}
+                            value={logoConfig.paddingPercent}
+                            onChange={(e) => setLogoConfig(prev => ({ ...prev, paddingPercent: Number(e.target.value) }))}
+                            className={`w-full h-1 rounded-lg appearance-none cursor-pointer ${
+                              theme === 'dark' ? 'bg-zinc-700 accent-indigo-500' : 'bg-zinc-300 accent-indigo-650'
+                            }`}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col gap-3.5">
+                      <div className="flex flex-col gap-1">
+                        <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                          Scale Size ({logoConfig.scalePercent}%)
+                        </span>
+                        <input
+                          type="range"
+                          min={5}
+                          max={50}
+                          step={1}
+                          value={logoConfig.scalePercent}
+                          onChange={(e) => setLogoConfig(prev => ({ ...prev, scalePercent: Number(e.target.value) }))}
+                          className={`w-full h-1 rounded-lg appearance-none cursor-pointer ${
+                            theme === 'dark' ? 'bg-zinc-700 accent-indigo-500' : 'bg-zinc-300 accent-indigo-650'
+                          }`}
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-1">
+                        <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                          Opacity Transparency ({Math.round(logoConfig.opacity * 100)}%)
+                        </span>
+                        <input
+                          type="range"
+                          min={0.1}
+                          max={1.0}
+                          step={0.05}
+                          value={logoConfig.opacity}
+                          onChange={(e) => setLogoConfig(prev => ({ ...prev, opacity: Number(e.target.value) }))}
+                          className={`w-full h-1 rounded-lg appearance-none cursor-pointer ${
+                            theme === 'dark' ? 'bg-zinc-700 accent-indigo-500' : 'bg-zinc-300 accent-indigo-650'
+                          }`}
+                        />
+                      </div>
+
+                      {logoConfig.position === 'custom' && (
+                        <div className="flex flex-col gap-3 border-t pt-3 border-zinc-200 dark:border-zinc-800">
+                          <div className="flex flex-col gap-1">
+                            <span className={`text-[9px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-450' : 'text-zinc-500'}`}>
+                              Custom X Coord ({logoConfig.customXPercent}%)
+                            </span>
+                            <input
+                              type="range"
+                              min={0}
+                              max={100}
+                              step={1}
+                              value={logoConfig.customXPercent}
+                              onChange={(e) => setLogoConfig(prev => ({ ...prev, customXPercent: Number(e.target.value) }))}
+                              className={`w-full h-1 rounded-lg appearance-none cursor-pointer ${
+                                theme === 'dark' ? 'bg-zinc-700 accent-indigo-500' : 'bg-zinc-300 accent-indigo-650'
+                              }`}
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <span className={`text-[9px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-455' : 'text-zinc-500'}`}>
+                              Custom Y Coord ({logoConfig.customYPercent}%)
+                            </span>
+                            <input
+                              type="range"
+                              min={0}
+                              max={100}
+                              step={1}
+                              value={logoConfig.customYPercent}
+                              onChange={(e) => setLogoConfig(prev => ({ ...prev, customYPercent: Number(e.target.value) }))}
+                              className={`w-full h-1 rounded-lg appearance-none cursor-pointer ${
+                                theme === 'dark' ? 'bg-zinc-700 accent-indigo-500' : 'bg-zinc-300 accent-indigo-650'
+                              }`}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  {/* Column 1: Badge Overlay Config */}
+                  <div className="lg:col-span-5 flex flex-col gap-4">
+                    {/* Badge Text */}
+                    <div className="flex flex-col gap-1.5">
                       <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                        Border Margin ({logoConfig.paddingPercent}%)
+                        Badge Overlay Text
                       </span>
-                      <input
-                        type="range"
-                        min={0}
-                        max={15}
-                        step={1}
-                        value={logoConfig.paddingPercent}
-                        onChange={(e) => setLogoConfig(prev => ({ ...prev, paddingPercent: Number(e.target.value) }))}
-                        className={`w-full h-1 rounded-lg appearance-none cursor-pointer ${
-                          theme === 'dark' ? 'bg-zinc-700 accent-indigo-500' : 'bg-zinc-300 accent-indigo-650'
+                      <textarea
+                        rows={2}
+                        value={badgeConfig.text}
+                        onChange={(e) => setBadgeConfig(prev => ({ ...prev, text: e.target.value }))}
+                        placeholder="e.g. NEW SEASON or 5 EPISODES EVERY TUESDAY"
+                        className={`px-3 py-2 text-xs font-semibold rounded-xl border transition-all resize-y ${
+                          theme === 'dark'
+                            ? 'bg-zinc-950 border-zinc-805 focus:border-indigo-500 text-white'
+                            : 'bg-zinc-50 border-zinc-200 focus:border-indigo-650 text-zinc-900'
                         }`}
                       />
+                      <p className={`text-[9px] ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-500'}`}>
+                        Use a new line for stacked ribbon text (e.g. NEW then SEASON on the next line).
+                      </p>
                     </div>
-                  )}
-                </div>
 
-                <div className="flex flex-col gap-3.5">
-                  <div className="flex flex-col gap-1">
-                    <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                      Scale Size ({logoConfig.scalePercent}%)
-                    </span>
-                    <input
-                      type="range"
-                      min={5}
-                      max={50}
-                      step={1}
-                      value={logoConfig.scalePercent}
-                      onChange={(e) => setLogoConfig(prev => ({ ...prev, scalePercent: Number(e.target.value) }))}
-                      className={`w-full h-1 rounded-lg appearance-none cursor-pointer ${
-                        theme === 'dark' ? 'bg-zinc-700 accent-indigo-500' : 'bg-zinc-300 accent-indigo-650'
-                      }`}
-                    />
+                    <div className="flex flex-col gap-1.5">
+                      <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                        Quick Style Presets
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {BADGE_PRESETS.map((preset) => (
+                          <button
+                            key={preset.label}
+                            onClick={() => applyBadgePreset(preset.config)}
+                            className={`px-2.5 py-1.5 text-[10px] border rounded-lg font-semibold transition cursor-pointer ${
+                              theme === 'dark'
+                                ? 'bg-zinc-950 border-zinc-800 hover:border-indigo-500/50 text-zinc-300 hover:text-white'
+                                : 'bg-zinc-50 border-zinc-200 hover:border-indigo-400 text-zinc-700 hover:text-zinc-950'
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                      <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                        Saved Banners
+                      </span>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={badgePresetName}
+                          onChange={(e) => setBadgePresetName(e.target.value)}
+                          placeholder="Name this banner style…"
+                          className={`flex-grow px-2.5 py-1.5 text-xs font-semibold rounded-lg border ${
+                            theme === 'dark'
+                              ? 'bg-zinc-950 border-zinc-800 text-white'
+                              : 'bg-zinc-50 border-zinc-200 text-zinc-900'
+                          }`}
+                        />
+                        <button
+                          onClick={saveCurrentBadgePreset}
+                          disabled={!badgePresetName.trim() || badgeConfig.badgeType === 'none'}
+                          className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold rounded-lg border border-indigo-500/30 bg-indigo-500/10 text-indigo-500 hover:bg-indigo-500/20 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0"
+                        >
+                          <BookmarkPlus className="w-3.5 h-3.5" />
+                          Save
+                        </button>
+                      </div>
+                      {savedBadgePresets.length > 0 ? (
+                        <div className="flex flex-col gap-1.5 max-h-36 overflow-y-auto pr-1">
+                          {savedBadgePresets.map((preset) => (
+                            <div
+                              key={preset.id}
+                              className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border ${
+                                theme === 'dark' ? 'bg-zinc-950 border-zinc-800' : 'bg-zinc-50 border-zinc-200'
+                              }`}
+                            >
+                              <div className="flex-grow min-w-0">
+                                <p className="text-[10px] font-bold truncate">{preset.name}</p>
+                                <p className="text-[9px] opacity-60 truncate">
+                                  {preset.config.badgeType.replace('-', ' ')} · {preset.config.text || 'No text'}
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => loadSavedBadgePreset(preset)}
+                                className="text-[9px] font-bold px-2 py-0.5 rounded border border-indigo-500/30 text-indigo-500 hover:bg-indigo-500/10 cursor-pointer shrink-0"
+                              >
+                                Load
+                              </button>
+                              <button
+                                onClick={() => deleteSavedBadgePreset(preset.id)}
+                                className="p-1 rounded text-rose-500 hover:bg-rose-500/10 cursor-pointer shrink-0"
+                                title="Delete saved banner"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className={`text-[9px] ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-500'}`}>
+                          Save a banner you like here to reuse on future images.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Badge Type Selector */}
+                    <div className="flex flex-col gap-1.5">
+                      <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                        Badge Overlay Type
+                      </span>
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          { id: 'none', label: '🚫 No Badge' },
+                          { id: 'diagonal-ribbon', label: '🎗️ Diagonal Ribbon' },
+                          { id: 'horizontal-banner', label: '🟰 Promo Banner' },
+                          { id: 'rectangular-block', label: '⬛ Rounded Block' }
+                        ].map((bType) => (
+                          <button
+                            key={bType.id}
+                            onClick={() => applyBadgePreset({
+                              badgeType: bType.id as BadgeOverlayConfig['badgeType'],
+                              position: bType.id === 'diagonal-ribbon'
+                                ? 'bottom-right'
+                                : bType.id === 'horizontal-banner'
+                                  ? 'bottom-center'
+                                  : badgeConfig.position,
+                              ...(bType.id === 'horizontal-banner'
+                                ? BADGE_ANCHOR_LAYOUT['bottom-center']
+                                : bType.id === 'rectangular-block'
+                                  ? { bannerWidthPercent: 42, bannerHeightPercent: 8, ...BADGE_ANCHOR_LAYOUT['bottom-center'] }
+                                  : {}),
+                            })}
+                            className={`py-2 px-2 text-[10px] font-bold rounded-xl border text-center transition cursor-pointer ${
+                              badgeConfig.badgeType === bType.id
+                                ? 'bg-indigo-500 border-indigo-500 text-white shadow-lg shadow-indigo-500/20'
+                                : (theme === 'dark'
+                                    ? 'bg-zinc-950 border-zinc-850 hover:border-zinc-700 text-zinc-350'
+                                    : 'bg-zinc-50 border-zinc-200 hover:border-zinc-300 text-zinc-700')
+                            }`}
+                          >
+                            {bType.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Background Color Picker */}
+                    <div className="flex flex-col gap-1.5">
+                      <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                        Background Color
+                      </span>
+                      <div className="flex flex-wrap gap-2 items-center">
+                        {[
+                          { color: '#ef4444', label: 'Red' },
+                          { color: '#f59e0b', label: 'Amber' },
+                          { color: '#10b981', label: 'Green' },
+                          { color: '#3b82f6', label: 'Blue' },
+                          { color: '#6366f1', label: 'Indigo' },
+                          { color: '#8b5cf6', label: 'Purple' },
+                          { color: '#f43f5e', label: 'Rose' },
+                          { color: '#000000', label: 'Black' },
+                          { color: '#ffffff', label: 'White' }
+                        ].map((preset) => (
+                          <button
+                            key={preset.color}
+                            onClick={() => setBadgeConfig(prev => ({ ...prev, badgeColor: preset.color }))}
+                            className={`w-6 h-6 rounded-full border transition cursor-pointer ${
+                              badgeConfig.badgeColor === preset.color 
+                                ? 'ring-2 ring-indigo-500 border-white' 
+                                : 'border-zinc-300 dark:border-zinc-700'
+                            }`}
+                            style={{ backgroundColor: preset.color }}
+                            title={preset.label}
+                          />
+                        ))}
+                        <input
+                          type="color"
+                          value={badgeConfig.badgeColor}
+                          onChange={(e) => setBadgeConfig(prev => ({ ...prev, badgeColor: e.target.value }))}
+                          className="w-7 h-7 rounded cursor-pointer border border-zinc-300 dark:border-zinc-700 bg-transparent shrink-0"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Text Color Picker */}
+                    <div className="flex flex-col gap-1.5">
+                      <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                        Text Color
+                      </span>
+                      <div className="flex flex-wrap gap-2 items-center">
+                        {[
+                          { color: '#ffffff', label: 'White' },
+                          { color: '#000000', label: 'Black' },
+                          { color: '#facc15', label: 'Yellow' },
+                          { color: '#ef4444', label: 'Red' }
+                        ].map((preset) => (
+                          <button
+                            key={preset.color}
+                            onClick={() => setBadgeConfig(prev => ({ ...prev, textColor: preset.color }))}
+                            className={`w-6 h-6 rounded-full border transition cursor-pointer ${
+                              badgeConfig.textColor === preset.color 
+                                ? 'ring-2 ring-indigo-500 border-white' 
+                                : 'border-zinc-300 dark:border-zinc-700'
+                            }`}
+                            style={{ backgroundColor: preset.color }}
+                            title={preset.label}
+                          />
+                        ))}
+                        <input
+                          type="color"
+                          value={badgeConfig.textColor}
+                          onChange={(e) => setBadgeConfig(prev => ({ ...prev, textColor: e.target.value }))}
+                          className="w-7 h-7 rounded cursor-pointer border border-zinc-300 dark:border-zinc-700 bg-transparent shrink-0"
+                        />
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="flex flex-col gap-1">
-                    <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                      Opacity Transparency ({Math.round(logoConfig.opacity * 100)}%)
-                    </span>
-                    <input
-                      type="range"
-                      min={0.1}
-                      max={1.0}
-                      step={0.05}
-                      value={logoConfig.opacity}
-                      onChange={(e) => setLogoConfig(prev => ({ ...prev, opacity: Number(e.target.value) }))}
-                      className={`w-full h-1 rounded-lg appearance-none cursor-pointer ${
-                        theme === 'dark' ? 'bg-zinc-700 accent-indigo-500' : 'bg-zinc-300 accent-indigo-650'
-                      }`}
-                    />
-                  </div>
+                  {/* Column 2: Badge Layout settings */}
+                  <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-6 border-t lg:border-t-0 lg:border-l pt-6 lg:pt-0 lg:pl-6 border-zinc-200 dark:border-zinc-800">
+                    {badgeConfig.badgeType === 'diagonal-ribbon' ? (
+                      <div className="flex flex-col gap-3.5 sm:col-span-2">
+                        <div className="flex flex-col gap-1">
+                          <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                            Ribbon Corner
+                          </span>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 mt-1">
+                            {[
+                              { id: 'top-left', label: '↖️ Top Left' },
+                              { id: 'top-right', label: '↗️ Top Right' },
+                              { id: 'bottom-left', label: '↙️ Bottom Left' },
+                              { id: 'bottom-right', label: '↘️ Bottom Right' },
+                            ].map((pos) => (
+                              <button
+                                key={pos.id}
+                                onClick={() => setBadgeConfig((prev) => ({ ...prev, position: pos.id as BadgeOverlayConfig['position'] }))}
+                                className={`py-2 px-1 text-[10px] font-bold rounded-lg border text-center transition cursor-pointer ${
+                                  badgeConfig.position === pos.id
+                                    ? 'bg-indigo-500 border-indigo-500 text-white'
+                                    : (theme === 'dark'
+                                        ? 'bg-zinc-950 border-zinc-850 hover:border-zinc-700 text-zinc-350'
+                                        : 'bg-zinc-50 border-zinc-200 hover:border-zinc-300 text-zinc-700')
+                                }`}
+                              >
+                                {pos.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    ) : badgeConfig.badgeType !== 'none' ? (
+                      <>
+                        <div className="flex flex-col gap-3.5 sm:col-span-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                              Quick Vertical Anchor
+                            </span>
+                            <button
+                              onClick={() => setBadgeConfig((prev) => ({ ...prev, textLinkedToBanner: !prev.textLinkedToBanner }))}
+                              className={`flex items-center gap-1 px-2 py-1 text-[9px] font-bold rounded-lg border cursor-pointer ${
+                                badgeConfig.textLinkedToBanner
+                                  ? 'border-indigo-500/30 bg-indigo-500/10 text-indigo-500'
+                                  : (theme === 'dark' ? 'border-zinc-700 text-zinc-400' : 'border-zinc-300 text-zinc-600')
+                              }`}
+                            >
+                              {badgeConfig.textLinkedToBanner ? <Link2 className="w-3 h-3" /> : <Unlink2 className="w-3 h-3" />}
+                              {badgeConfig.textLinkedToBanner ? 'Text moves with banner' : 'Text moves independently'}
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-3 gap-1.5">
+                            {[
+                              { id: 'top-center' as const, label: '⬆️ Top' },
+                              { id: 'center' as const, label: '⏺️ Middle' },
+                              { id: 'bottom-center' as const, label: '⬇️ Bottom' },
+                            ].map((anchor) => (
+                              <button
+                                key={anchor.id}
+                                onClick={() => applyBadgeAnchor(anchor.id)}
+                                className={`py-2 px-1 text-[10px] font-bold rounded-lg border text-center transition cursor-pointer ${
+                                  badgeConfig.position === anchor.id
+                                    ? 'bg-indigo-500 border-indigo-500 text-white'
+                                    : (theme === 'dark'
+                                        ? 'bg-zinc-950 border-zinc-850 hover:border-zinc-700 text-zinc-350'
+                                        : 'bg-zinc-50 border-zinc-200 hover:border-zinc-300 text-zinc-700')
+                                }`}
+                              >
+                                {anchor.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
 
-                  {logoConfig.position === 'custom' && (
-                    <div className="flex flex-col gap-3 border-t pt-3 border-zinc-200 dark:border-zinc-800">
+                        <div className={`flex flex-col gap-3 p-3 rounded-xl border sm:col-span-1 ${
+                          theme === 'dark' ? 'bg-zinc-950/50 border-zinc-800' : 'bg-zinc-50 border-zinc-200'
+                        }`}>
+                          <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-rose-300' : 'text-rose-600'}`}>
+                            Banner Background
+                          </span>
+
+                          {[
+                            { key: 'bannerXPercent' as const, label: 'Horizontal', min: 0, max: 100 },
+                            { key: 'bannerYPercent' as const, label: 'Vertical', min: 0, max: 100 },
+                            { key: 'bannerWidthPercent' as const, label: 'Width', min: 15, max: 100 },
+                            { key: 'bannerHeightPercent' as const, label: 'Height', min: 3, max: 25 },
+                          ].map((slider) => (
+                            <div key={slider.key} className="flex flex-col gap-1">
+                              <span className={`text-[9px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-450' : 'text-zinc-500'}`}>
+                                {slider.label} ({Math.round(badgeConfig[slider.key])}%)
+                              </span>
+                              <input
+                                type="range"
+                                min={slider.min}
+                                max={slider.max}
+                                step={1}
+                                value={badgeConfig[slider.key]}
+                                onChange={(e) => updateBannerLayout({ [slider.key]: Number(e.target.value) })}
+                                className={`w-full h-1 rounded-lg appearance-none cursor-pointer ${
+                                  theme === 'dark' ? 'bg-zinc-700 accent-rose-500' : 'bg-zinc-300 accent-rose-500'
+                                }`}
+                              />
+                            </div>
+                          ))}
+
+                          <div className="flex items-center justify-center gap-1 pt-1">
+                            <button onClick={() => nudgeBadgeLayout('banner', 'x', -2)} className="p-1 border rounded cursor-pointer dark:border-zinc-700" title="Move banner left"><ArrowLeft className="w-3 h-3" /></button>
+                            <button onClick={() => nudgeBadgeLayout('banner', 'y', -2)} className="p-1 border rounded cursor-pointer dark:border-zinc-700" title="Move banner up"><ArrowUp className="w-3 h-3" /></button>
+                            <button onClick={() => nudgeBadgeLayout('banner', 'y', 2)} className="p-1 border rounded cursor-pointer dark:border-zinc-700" title="Move banner down"><ArrowDown className="w-3 h-3" /></button>
+                            <button onClick={() => nudgeBadgeLayout('banner', 'x', 2)} className="p-1 border rounded cursor-pointer dark:border-zinc-700" title="Move banner right"><ArrowRight className="w-3 h-3" /></button>
+                          </div>
+                        </div>
+
+                        <div className={`flex flex-col gap-3 p-3 rounded-xl border sm:col-span-1 ${
+                          theme === 'dark' ? 'bg-zinc-950/50 border-zinc-800' : 'bg-zinc-50 border-zinc-200'
+                        }`}>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-indigo-300' : 'text-indigo-600'}`}>
+                              Banner Text
+                            </span>
+                            <button
+                              onClick={centerTextOnBanner}
+                              className="text-[9px] font-bold px-2 py-0.5 rounded border border-indigo-500/30 text-indigo-500 hover:bg-indigo-500/10 cursor-pointer"
+                            >
+                              Center on banner
+                            </button>
+                          </div>
+
+                          {[
+                            { key: 'textXPercent' as const, label: 'Horizontal' },
+                            { key: 'textYPercent' as const, label: 'Vertical' },
+                          ].map((slider) => (
+                            <div key={slider.key} className="flex flex-col gap-1">
+                              <span className={`text-[9px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-450' : 'text-zinc-500'}`}>
+                                {slider.label} ({Math.round(badgeConfig[slider.key])}%)
+                              </span>
+                              <input
+                                type="range"
+                                min={0}
+                                max={100}
+                                step={1}
+                                value={badgeConfig[slider.key]}
+                                disabled={badgeConfig.textLinkedToBanner}
+                                onChange={(e) => setBadgeConfig((prev) => ({ ...prev, [slider.key]: Number(e.target.value) }))}
+                                className={`w-full h-1 rounded-lg appearance-none cursor-pointer disabled:opacity-40 ${
+                                  theme === 'dark' ? 'bg-zinc-700 accent-indigo-500' : 'bg-zinc-300 accent-indigo-650'
+                                }`}
+                              />
+                            </div>
+                          ))}
+
+                          <div className="flex items-center justify-center gap-1 pt-1">
+                            <button onClick={() => nudgeBadgeLayout('text', 'x', -2)} disabled={badgeConfig.textLinkedToBanner} className="p-1 border rounded cursor-pointer disabled:opacity-40 dark:border-zinc-700" title="Move text left"><ArrowLeft className="w-3 h-3" /></button>
+                            <button onClick={() => nudgeBadgeLayout('text', 'y', -2)} disabled={badgeConfig.textLinkedToBanner} className="p-1 border rounded cursor-pointer disabled:opacity-40 dark:border-zinc-700" title="Move text up"><ArrowUp className="w-3 h-3" /></button>
+                            <button onClick={() => nudgeBadgeLayout('text', 'y', 2)} disabled={badgeConfig.textLinkedToBanner} className="p-1 border rounded cursor-pointer disabled:opacity-40 dark:border-zinc-700" title="Move text down"><ArrowDown className="w-3 h-3" /></button>
+                            <button onClick={() => nudgeBadgeLayout('text', 'x', 2)} disabled={badgeConfig.textLinkedToBanner} className="p-1 border rounded cursor-pointer disabled:opacity-40 dark:border-zinc-700" title="Move text right"><ArrowRight className="w-3 h-3" /></button>
+                          </div>
+                        </div>
+                      </>
+                    ) : null}
+
+                    <div className="flex flex-col gap-3.5 sm:col-span-2">
+                      {/* Font Size slider */}
                       <div className="flex flex-col gap-1">
-                        <span className={`text-[9px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-450' : 'text-zinc-500'}`}>
-                          Custom X Coord ({logoConfig.customXPercent}%)
+                        <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                          Badge Font Size ({badgeConfig.fontSizePercent}%)
                         </span>
                         <input
                           type="range"
-                          min={0}
-                          max={100}
+                          min={4}
+                          max={25}
                           step={1}
-                          value={logoConfig.customXPercent}
-                          onChange={(e) => setLogoConfig(prev => ({ ...prev, customXPercent: Number(e.target.value) }))}
+                          value={badgeConfig.fontSizePercent}
+                          onChange={(e) => setBadgeConfig(prev => ({ ...prev, fontSizePercent: Number(e.target.value) }))}
                           className={`w-full h-1 rounded-lg appearance-none cursor-pointer ${
                             theme === 'dark' ? 'bg-zinc-700 accent-indigo-500' : 'bg-zinc-300 accent-indigo-650'
                           }`}
                         />
                       </div>
+
+                      {/* Opacity slider */}
                       <div className="flex flex-col gap-1">
-                        <span className={`text-[9px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-455' : 'text-zinc-500'}`}>
-                          Custom Y Coord ({logoConfig.customYPercent}%)
+                        <span className={`text-[10px] font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                          Badge Opacity ({Math.round(badgeConfig.opacity * 100)}%)
                         </span>
                         <input
                           type="range"
-                          min={0}
-                          max={100}
-                          step={1}
-                          value={logoConfig.customYPercent}
-                          onChange={(e) => setLogoConfig(prev => ({ ...prev, customYPercent: Number(e.target.value) }))}
+                          min={0.1}
+                          max={1.0}
+                          step={0.05}
+                          value={badgeConfig.opacity}
+                          onChange={(e) => setBadgeConfig(prev => ({ ...prev, opacity: Number(e.target.value) }))}
                           className={`w-full h-1 rounded-lg appearance-none cursor-pointer ${
                             theme === 'dark' ? 'bg-zinc-700 accent-indigo-500' : 'bg-zinc-300 accent-indigo-650'
                           }`}
                         />
                       </div>
                     </div>
-                  )}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
+        </div>
         </div>
 
         {/* Global Toolbar */}
@@ -2273,6 +3413,96 @@ export default function App() {
           </div>
         )}
 
+        {/* Export Preview Workspace */}
+        {loadedCount > 0 && (
+          <div className={`border transition-all duration-200 ${
+            isWorkspaceCollapsed ? 'p-2 px-3 rounded-xl shadow-sm' : 'p-5 rounded-2xl shadow-lg'
+          } ${theme === 'dark' ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200/90 shadow-zinc-200/30'}`}>
+            <div
+              onClick={() => setIsWorkspaceCollapsed(!isWorkspaceCollapsed)}
+              className={`flex items-center justify-between cursor-pointer select-none ${
+                isWorkspaceCollapsed ? '' : 'mb-4 border-b pb-3 border-zinc-200 dark:border-zinc-800'
+              }`}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <Eye className={`text-emerald-500 shrink-0 ${isWorkspaceCollapsed ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} />
+                <h2 className={`font-bold uppercase tracking-wider ${isWorkspaceCollapsed ? 'text-[11px]' : 'text-sm'} ${theme === 'dark' ? 'text-zinc-200' : 'text-zinc-850'}`}>
+                  Export Preview Gallery
+                </h2>
+                {isWorkspaceCollapsed && focusedSize && (
+                  <span className={`text-[9px] truncate ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-500'}`}>
+                    · {focusedSize.name}
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={(e) => { e.stopPropagation(); setIsWorkspaceCollapsed(!isWorkspaceCollapsed); }}
+                className={`p-1 rounded-lg border transition hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer ${
+                  theme === 'dark' ? 'border-zinc-800 text-zinc-400' : 'border-zinc-200 text-zinc-500'
+                }`}
+              >
+                {isWorkspaceCollapsed ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
+              </button>
+            </div>
+
+            {!isWorkspaceCollapsed && focusedSize && (
+              <div className="flex flex-col lg:flex-row gap-6">
+                <div className="flex flex-wrap gap-2 lg:w-56 shrink-0">
+                  {activeSizes.map((size) => (
+                    <button
+                      key={size.id}
+                      onClick={() => setFocusedSizeId(size.id)}
+                      className={`px-3 py-2 text-[10px] font-bold rounded-xl border text-left transition cursor-pointer w-full ${
+                        focusedSizeId === size.id
+                          ? 'bg-indigo-500 border-indigo-500 text-white'
+                          : (theme === 'dark'
+                              ? 'bg-zinc-950 border-zinc-800 hover:border-zinc-700 text-zinc-300'
+                              : 'bg-zinc-50 border-zinc-200 hover:border-zinc-300 text-zinc-700')
+                      }`}
+                    >
+                      <span className="block">{size.name}</span>
+                      <span className="block opacity-70 font-mono text-[9px]">{size.width}×{size.height}</span>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex-grow flex flex-col items-center gap-3">
+                  <div
+                    className={`relative rounded-2xl overflow-hidden border shadow-inner flex items-center justify-center ${
+                      theme === 'dark' ? 'bg-zinc-950 border-zinc-800' : 'bg-zinc-100 border-zinc-200'
+                    }`}
+                    style={{
+                      width: '100%',
+                      maxWidth: '420px',
+                      aspectRatio: `${focusedSize.width}/${focusedSize.height}`,
+                    }}
+                  >
+                    {workspacePreviewUrl ? (
+                      <img
+                        src={workspacePreviewUrl}
+                        alt={`${focusedSize.name} preview`}
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      <div className={`flex flex-col items-center gap-2 ${theme === 'dark' ? 'text-zinc-600' : 'text-zinc-400'}`}>
+                        <RefreshCw className="w-6 h-6 animate-spin" />
+                        <span className="text-xs font-semibold">Generating preview…</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-center">
+                    <p className={`text-sm font-bold ${theme === 'dark' ? 'text-zinc-200' : 'text-zinc-800'}`}>{focusedSize.name}</p>
+                    <p className={`text-[11px] ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-500'}`}>
+                      {focusedSize.width}×{focusedSize.height}px · {getExportFormat(focusedSize, exportFormats).toUpperCase()}
+                      {imageNames[focusedSize.id] ? ` · ${imageNames[focusedSize.id]}` : ''}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Dynamic Image Panel Grid */}
         <div className={`grid gap-8 ${
           activeTab === 'emedia_vod_box' 
@@ -2288,24 +3518,29 @@ export default function App() {
               crop={crops[size.id] || { x: 0, y: 0 }}
               zoom={zooms[size.id] || 1}
               croppedAreaPixels={croppedAreas[size.id] || null}
-              quality={qualities[size.id] !== undefined ? qualities[size.id] : 0.8}
-              exportFormat={exportFormats[size.id] || size.format}
-              setImage={(val) => setImages((prev) => ({ ...prev, [size.id]: val }))}
-              setImageName={(val) => setImageNames((prev) => ({ ...prev, [size.id]: val }))}
-              setCrop={(val) => setCrops((prev) => ({ ...prev, [size.id]: val }))}
-              setZoom={(val) => setZooms((prev) => ({ ...prev, [size.id]: val }))}
-              setCroppedAreaPixels={(val) => setCroppedAreas((prev) => ({ ...prev, [size.id]: val }))}
-              setQuality={(val) => setQualities((prev) => ({ ...prev, [size.id]: val }))}
-              setExportFormat={(val) => setExportFormats((prev) => ({ ...prev, [size.id]: val }))}
+              quality={qualities[size.id] !== undefined ? qualities[size.id] : (size.defaultQuality ?? 0.8)}
+              exportFormat={getExportFormat(size, exportFormats)}
+              setImage={(val: string | null) => setImages((prev) => ({ ...prev, [size.id]: val }))}
+              setImageName={(val: string | null) => setImageNames((prev) => ({ ...prev, [size.id]: val }))}
+              setCrop={(val: { x: number; y: number }) => setCrops((prev) => ({ ...prev, [size.id]: val }))}
+              setZoom={(val: number) => setZooms((prev) => ({ ...prev, [size.id]: val }))}
+              setCroppedAreaPixels={(val: any) => setCroppedAreas((prev) => ({ ...prev, [size.id]: val }))}
+              setQuality={(val: number) => setQualities((prev) => ({ ...prev, [size.id]: val }))}
+              setExportFormat={(val: 'jpeg' | 'png') => setExportFormats((prev) => ({ ...prev, [size.id]: val }))}
               globalSafetyShow={globalSafetyShow}
               theme={theme}
               filenamePrefix={filenamePrefix}
               textConfig={textConfig}
               showTextOverlay={showTextOverlays[size.id] !== undefined ? showTextOverlays[size.id] : (size.id !== 'runntv_logo')}
-              setShowTextOverlay={(val) => setShowTextOverlays((prev) => ({ ...prev, [size.id]: val }))}
+              setShowTextOverlay={(val: boolean) => setShowTextOverlays((prev) => ({ ...prev, [size.id]: val }))}
               logoConfig={logoConfig}
               showLogoOverlay={showLogoOverlays[size.id] !== undefined ? showLogoOverlays[size.id] : (size.id !== 'runntv_logo')}
-              setShowLogoOverlay={(val) => setShowLogoOverlays((prev) => ({ ...prev, [size.id]: val }))}
+              setShowLogoOverlay={(val: boolean) => setShowLogoOverlays((prev) => ({ ...prev, [size.id]: val }))}
+              badgeConfig={badgeConfig}
+              showBadgeOverlay={showBadgeOverlays[size.id] !== undefined ? showBadgeOverlays[size.id] : (size.id !== 'runntv_logo')}
+              setShowBadgeOverlay={(val: boolean) => setShowBadgeOverlays((prev) => ({ ...prev, [size.id]: val }))}
+              onFocus={() => setFocusedSizeId(size.id)}
+              isFocused={focusedSizeId === size.id}
             />
           ))}
         </div>
